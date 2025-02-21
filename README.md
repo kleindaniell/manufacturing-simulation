@@ -1,2 +1,2 @@
 # jobshop-simulation
-Job Shop discrete event simulation for reinforcement learning
+Discrete-event simulation of job shop scheduling for reinforcement learning.
