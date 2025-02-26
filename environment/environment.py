@@ -15,14 +15,9 @@ class Environment(gym.env):
                   resources_cfg: dict,
                   products_cfg: dict,
                   raw_material_cfg: dict,
+                  schedule_interva: int,
+                  buffer_adjust_interval: int,
                   set_constraint: int=None,
-
-
-                  
-                  
-
-
-
                   monitor: bool=False,
                   warmup: bool=False,
                   actions: str="discret",
@@ -34,20 +29,17 @@ class Environment(gym.env):
         self.env = simpy.Environment()
         
         # Parameters
+        self.resources = resources_cfg
+        self.products = products_cfg
+        self.raw_material = raw_material_cfg
         self.warmup = warmup
         self.run_until = run_until
         self.monitor_interval = monitor
         self.actions_type = actions
         self.env_mode = env_mode
-
-        # Absolute params
-        self.scheduler = self.params["environment"]["scheduler"]
-        self.schedule_interval = self.params["environment"]["schedule_interval"]
-        self.buffer_adjust_interval = self.params["environment"]["buffer_interval"]
-        self.sch_max_action = self.params["environment"]["sch_max_action"]
-        self.action_power = self.params["environment"]["action_power"]
-        self.wip_multiplier = self.params["environment"]["wip_multiplier"]
-        self.fgoods_multiplier = self.params["environment"]["fgoods_multiplier"]
-        self.reward_add = self.params["environment"]["reward_add"]
-        # create environment
+        self.schedule_interva = schedule_interva
+        self.buffer_adjust_interval = buffer_adjust_interval
+        self.constraint = set_constraint
+        
+        
         
