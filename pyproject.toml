@@ -1,0 +1,21 @@
+[build-system]
+requires = ["setuptools", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "shop-environment"
+version = "0.1.0"
+description = "Discret-event simulation of a job shop scheduling for reinforcement learning"
+authors = [
+    {name = "Daniel Klein", email = "kleindaniel@live.com"}
+]
+maintainers = [
+    {name = "Daniel Klein", email = "kleindaniel@live.com"}
+]
+dependencies = [
+    "simpy",
+    "numpy",
+    "pandas"
+]
+requires-python = ">= 3.11"
+readme = {file = "README.txt", content-type = "text/markdown"}
