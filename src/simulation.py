@@ -79,9 +79,6 @@ class Environment(gym.env):
         self.wip_finished = simpy.FilterStore(self.env)
         self.wip_id = 0
         self.wip_orders = {}
-        self.wip_system_monitor = []
-        self.inventory_system_monitor = []
-        self.finished_goods_system_monitor = []
 
     def _create_resources(self) -> None:
         self.resources = {}
@@ -96,6 +93,7 @@ class Environment(gym.env):
             self.machine_down[resource] = self.env.event()
             self.machine_down[resource].succeed()
             self.last_process[resource] = 0
+            self.env.process(self._breakdowns())
 
     def _create_process(self):
         self.processes_config = {}
@@ -116,12 +114,12 @@ class Environment(gym.env):
 
                 # Start production by process
 
-                self.env.process(self._production_pull_system(process))
+                self.env.process(self._production_system(process))
 
             raw_material = self.products_config[product].get("raw_material")
             self.processes_output[raw_material] = simpy.Store(self.env)
 
-    def _production_pull_system(self, process):
+    def _production_system(self, process):
         resource = self.processes_config[process]["resource"]
 
         next_process = False
@@ -195,3 +193,84 @@ class Environment(gym.env):
                 end_time = self.env.now
                 if self.env.now > self.warmup:
                     self.utilization[resource] += round(end_time - start_time, 8)
+
+    def _breakdowns(self, resource):
+        try:
+            while True:
+                tbf_dist = self.resources_config[resource]["tbf"].get(
+                    "dist", "constant"
+                )
+                tbf_params = self.resources_config[resource]["tbf"].get("params", [0])
+                tbf = self.generate_random_number(tbf_dist, tbf_params)
+
+                ttr_dist = self.resources_config[resource]["ttr"].get(
+                    "dist", "constant"
+                )
+                ttr_params = self.resources_config[resource]["ttr"].get("params", [0])
+                ttr = self.generate_random_number(ttr_dist, ttr_params)
+
+                yield self.env.timeout(tbf)
+                self.machine_down[resource] = self.env.event()
+                yield self.env.timeout(ttr)
+                self.machine_down[resource].succeed()
+
+                if self.env.now >= self.warmup:
+                    self.machine_ttr_monitor[resource].append(ttr)
+                    self.machine_tbf_monitor[resource].append(tbf)
+        except:
+            pass
+
+    def make_PO(self, product, quantity):
+        constraint = self.products_config[product].get("constraint", False)
+
+        # make wip order
+        production_order = {}
+        production_order["id"] = self.wip_id
+        production_order["product"] = product
+        production_order["schedule"] = 0
+        production_order["released"] = -1
+        production_order["finished"] = False
+        production_order["quantity"] = quantity
+        production_order["priority"] = 0 if constraint else 1
+        production_order["constraint"] = constraint
+        production_order["process_total"] = len(
+            self.products_config[product]["processes"]
+        )
+        production_order["process_finished"] = 0
+        # production_order["processes"] = {}
+        # for process in self.products_config[product]["processes"]:
+        #     production_order["processes"][process] = -1
+        # raw_material = self.products_config[product].get("raw_material")
+        # production_order["processes"][raw_material] = -1
+
+        self.wip_id += 1
+
+        return production_order
+
+    def release_PO(self, order, callback):
+        product = order["product"]
+        quantity = order["quantity"]
+        schedule = order["schedule"]
+        raw_material = self.products_config[product]["raw_material"]
+
+        if schedule > self.env.now:
+            delay = schedule - self.env.now
+            yield self.env.timeout(delay)
+
+        order["released"] = self.env.now
+        # order["processes"][raw_material] = self.env.now
+
+        yield self.processes_output[raw_material].put(order)
+
+        if callback:
+            callback()
+
+        # # Add order to shipping buffer
+        # yield self.shipping_buffer_level[product].put(quantity)
+        # # Add order to wip monitor
+        # self.wip_orders[order["id"]] = order
+
+        # # Add produtc to Constraint buffer
+        # if order["constraint"]:
+        #     for _ in range(quantity):
+        #         self.constraint_buffer_level.append(product)
