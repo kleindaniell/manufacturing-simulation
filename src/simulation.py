@@ -82,6 +82,8 @@ class Environment(gym.env):
 
     def _create_resources(self) -> None:
         self.resources = {}
+        self.resources_output = {}
+        self.resources_input = {}
         self.machine_down = {}
         self.last_process = {}
 
@@ -90,6 +92,9 @@ class Environment(gym.env):
             quantity = resource_config.get("quantity", 1)
 
             self.resources[resource] = simpy.Resource(self.env, quantity)
+            self.resources_output[resource] = simpy.FilterStore(self.env)
+            self.resources_input[resource] = simpy.FilterStore(self.env)
+
             self.machine_down[resource] = self.env.event()
             self.machine_down[resource].succeed()
             self.last_process[resource] = 0
@@ -109,8 +114,8 @@ class Environment(gym.env):
                 ]
                 self.processes_config[process]["next"] = next_process
 
-                self.processes_output[process] = simpy.Store(self.env)
-                self.processes_input[process] = simpy.Store(self.env)
+                self.processes_output[process] = simpy.FilterStore(self.env)
+                self.processes_input[process] = simpy.FilterStore(self.env)
 
                 # Start production by process
 
@@ -119,8 +124,22 @@ class Environment(gym.env):
             raw_material = self.products_config[product].get("raw_material")
             self.processes_output[raw_material] = simpy.Store(self.env)
 
-    def _production_system(self, process):
-        resource = self.processes_config[process]["resource"]
+    def get_resource_input(self, resource, callback):
+
+            if callback:
+                order = callback()
+            else:
+                order = yield self.resources_input[resource].get()
+            
+            return order
+
+    def _production_system(self, resource):
+        
+        order = self.get_resource_input(resource)
+        
+        process
+
+        next_resource = None
 
         next_process = False
         for product in self.products_config:
@@ -229,19 +248,21 @@ class Environment(gym.env):
         production_order["product"] = product
         production_order["schedule"] = 0
         production_order["released"] = -1
+        production_order["duedate"] = 0
         production_order["finished"] = False
         production_order["quantity"] = quantity
-        production_order["priority"] = 0 if constraint else 1
+        production_order["priority"] = 0 
         production_order["constraint"] = constraint
         production_order["process_total"] = len(
             self.products_config[product]["processes"]
         )
         production_order["process_finished"] = 0
-        # production_order["processes"] = {}
-        # for process in self.products_config[product]["processes"]:
-        #     production_order["processes"][process] = -1
-        # raw_material = self.products_config[product].get("raw_material")
-        # production_order["processes"][raw_material] = -1
+        production_order["processes"] = {}
+        
+        for process in self.products_config[product]["processes"]:
+            production_order["processes"][process] = -1
+        raw_material = self.products_config[product].get("raw_material")
+        production_order["processes"][raw_material] = -1
 
         self.wip_id += 1
 
@@ -274,3 +295,8 @@ class Environment(gym.env):
         # if order["constraint"]:
         #     for _ in range(quantity):
         #         self.constraint_buffer_level.append(product)
+
+    def _update_resource_input_orders(self, resource):
+
+        items = self.resources_input[resource].items
+        items = []
