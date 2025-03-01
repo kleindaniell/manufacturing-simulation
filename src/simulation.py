@@ -51,41 +51,33 @@ class Environment(gym.env):
 
     def _create_orders(self):
         self.finished_goods = {}
-        self.wip_product_monitor = {}
+
         self.demand = {}
         self.demand_orders = {}
-        self.actual_demand = {}
         self.delivered_ontime = {}
         self.delivered_late = {}
         self.tardiness_products = {}
         self.tardiness_system = []
         for product in self.products_config:
             self.finished_goods[product] = simpy.Container(self.env)
-            self.finished_goods[product].put(self.shipping_buffer[product])
-            self.finished_goods_monitor[product] = []
 
-            self.wip_product_monitor[product] = []
-            self.inventory_product_monitor[product] = []
             self.demand[product] = simpy.FilterStore(self.env)
             self.demand_orders[product] = simpy.FilterStore(self.env)
-            self.actual_demand[product] = simpy.Container(self.env)
 
             self.delivered_ontime[product] = simpy.FilterStore(self.env)
             self.delivered_late[product] = simpy.FilterStore(self.env)
             self.tardiness_products[product] = []
 
         self.finished_orders = simpy.FilterStore(self.env)
-        self.to_release = simpy.Store(self.env)
+        self.orders_to_release = simpy.Store(self.env)
         self.wip_finished = simpy.FilterStore(self.env)
         self.wip_id = 0
-        self.wip_orders = {}
 
     def _create_resources(self) -> None:
         self.resources = {}
         self.resources_output = {}
         self.resources_input = {}
         self.machine_down = {}
-        self.last_process = {}
 
         for resource in self.resources_config:
             resource_config = self.resources_config.get(resource)
@@ -97,68 +89,65 @@ class Environment(gym.env):
 
             self.machine_down[resource] = self.env.event()
             self.machine_down[resource].succeed()
-            self.last_process[resource] = 0
+
+            self.env.process(self._production_system(resource))
             self.env.process(self._breakdowns())
+            self.env.process(self._transportation(resource))
+            
 
     def _create_process(self):
         self.processes_config = {}
         self.processes_output = {}
         self.processes_input = {}
+        self.processes_name_list = {}
+        self.processes_value_list = {}
 
         for product in self.products_config:
             processes = self.products_config[product].get("processes")
-            for process in processes:
-                self.processes_config[process] = processes[process]
-                next_process = [
-                    process for x in processes.values() if process in x["deps"]
-                ]
-                self.processes_config[process]["next"] = next_process
+            self.processes_name_list = list(processes.keys())
+            self.processes_value_list = list(processes.values())
 
-                self.processes_output[process] = simpy.FilterStore(self.env)
-                self.processes_input[process] = simpy.FilterStore(self.env)
+    def _get_order_resource_queue(self, resource, method):
 
-                # Start production by process
-
-                self.env.process(self._production_system(process))
-
-            raw_material = self.products_config[product].get("raw_material")
-            self.processes_output[raw_material] = simpy.Store(self.env)
-
-    def get_resource_input(self, resource, callback):
-
-            if callback:
-                order = callback()
-            else:
+        match method:
+            case "fifo":
+                order = yield self.resources_input[resource].get()
+            case "toc_penetration":
+                # TODO: implement filter for toc penetration method
                 order = yield self.resources_input[resource].get()
             
-            return order
+        return order
+
+    def _transportation(self, resource):
+
+        while True:
+            order = yield self.resources_output[resource].get()
+            
+            if order["process_total"] == order["process_finished"]:
+                order["finished"] = self.env.now
+                yield self.finished_orders.put(order)
+            else:
+                process_id = order["process_finished"]
+                next_resource = self.processes_value_list[process_id]["resource"]
+                yield self.resources_input[next_resource].put(order)
+
 
     def _production_system(self, resource):
         
-        order = self.get_resource_input(resource)
-        
-        process
-
-        next_resource = None
-
-        next_process = False
-        for product in self.products_config:
-            if self.products_config[product]["final_process"] == process:
-                next_process = "final"
-            else:
-                next_process = self.processes_config[process]["next"]
-
-        process_deps = self.processes_config[process]["deps"]
+        last_process = None
 
         while True:
+            
             yield self.machine_down[resource]
+            
+            # Get order from queue
+            order = self._get_order_resource_queue(resource, "fifo")
+            
+            process = order["next_process"]
 
-            order = yield self.processes_output[process_deps[0]].get()
-
-            product = order["product"]
-
+            # Check setup
             setup_time = 0
-            if self.last_process[resource] != process:
+            if last_process != process:
                 setup_dist = self.resources_config[resource]["setup"].get(
                     "dist", "constant"
                 )
@@ -166,11 +155,11 @@ class Environment(gym.env):
                     "params", [0]
                 )
                 setup_time = self.generate_random_number(setup_dist, setup_params)
-                if self.env.now >= self.warmup:
-                    self.setups_cout[resource] += 1
-                    self.setups_time[resource] += setup_time
+                # if self.env.now >= self.warmup:
+                    # self.setups_cout[resource] += 1
+                    # self.setups_time[resource] += setup_time
 
-            self.last_process[resource] = process
+            last_process = process
 
             with self.resources[resource].request() as req:
                 yield req
@@ -195,24 +184,16 @@ class Environment(gym.env):
 
                     yield self.env.timeout(processing_time)
 
-                    if resource == self.constraint:
-                        self.constraint_buffer_level.remove(product)
-
+                # Register data in order
+                order["process_finished"] += 1
                 order["processes"][process] = self.env.now
-
-                if next_process == "final":
-                    order["finished"] = self.env.now
-                    yield self.finished_orders.put(order)
-                else:
-                    yield self.processes_output[process].put(order)
-                    # TODO: Push System - logic to put on next process input
-                    # next_resource = self.processes_config[next_process[0]]["resource"]
-                    # yield self.processes_input[next_resource].put(order)
-
+                    
                 end_time = self.env.now
+                
                 if self.env.now > self.warmup:
                     self.utilization[resource] += round(end_time - start_time, 8)
 
+       
     def _breakdowns(self, resource):
         try:
             while True:
@@ -240,7 +221,6 @@ class Environment(gym.env):
             pass
 
     def make_PO(self, product, quantity):
-        constraint = self.products_config[product].get("constraint", False)
 
         # make wip order
         production_order = {}
@@ -251,8 +231,7 @@ class Environment(gym.env):
         production_order["duedate"] = 0
         production_order["finished"] = False
         production_order["quantity"] = quantity
-        production_order["priority"] = 0 
-        production_order["constraint"] = constraint
+        production_order["priority"] = 0
         production_order["process_total"] = len(
             self.products_config[product]["processes"]
         )
@@ -268,7 +247,7 @@ class Environment(gym.env):
 
         return production_order
 
-    def release_PO(self, order, callback):
+    def _release_PO(self, order, callback):
         product = order["product"]
         quantity = order["quantity"]
         schedule = order["schedule"]
@@ -296,7 +275,29 @@ class Environment(gym.env):
         #     for _ in range(quantity):
         #         self.constraint_buffer_level.append(product)
 
-    def _update_resource_input_orders(self, resource):
+    def generate_random_number(self, distribution, params):
 
-        items = self.resources_input[resource].items
-        items = []
+        value = 0
+        if distribution == "constant":
+            value = params[0]
+        elif distribution == "uniform":
+            c = params[1]*2*np.sqrt(3)
+            a = params[0] - (c/2)
+            b = params[0] + (c/2)
+            value = random.uniform(a,b)
+        elif distribution == "gamma":
+            k = params[0]**2 / params[1]**2
+            theta = params[1]**2/params[0]
+            value = random.gammavariate(k, theta)
+        elif distribution == "earlang":
+            k = params[0]**2 / params[1]**2
+            theta = params[1]**2/params[0]
+            value = random.gammavariate(k, theta)
+        elif distribution == "expo":
+            value = random.expovariate(1/params[0])
+        elif distribution == "normal":
+            value = random.normalvariate(params[0], params[1])
+        else:
+            value = 0
+        
+        return value
