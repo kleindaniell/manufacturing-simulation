@@ -1,12 +1,12 @@
 import simpy
-from Control import Info, ProductionOrder
+from control import Info, ProductionOrder
 from utils import random_number
 
 
 class Production:
     def __init__(self, env: simpy.Environment, info: Info, warmup: int = 0):
         self.env = env
-        self.info = info
+        self.info: Info = info
         self.warmup = warmup
         self._create_resources()
 
@@ -55,13 +55,13 @@ class Production:
 
     def _transportation(self, resource):
         while True:
-            order = yield self.info.resource_output[resource].get()
+            order: ProductionOrder = yield self.info.resource_output[resource].get()
 
-            if order["process_total"] == order["process_finished"]:
-                order["finished"] = self.env.now
+            if order.process_total == order.process_finished:
+                order.finished = self.env.now
                 yield self.info.finished_orders.put(order)
             else:
-                process_id = order["process_finished"]
+                process_id = order.process_finished
                 next_resource = self.info.processes_value_list[process_id]["resource"]
                 yield self.info.resource_input[next_resource].put(order)
 
@@ -73,9 +73,9 @@ class Production:
             yield self.machine_down[resource]
 
             # Get order from queue
-            order = self._get_order_resource_queue(resource, "fifo")
-            product = order["product"]
-            process = order["process_finished"]
+            order: ProductionOrder = self._get_order_resource_queue(resource, "fifo")
+            product = order.product
+            process = order.process_finished
 
             # Check setup
             if last_product == product and last_process == process:
@@ -116,8 +116,7 @@ class Production:
                     yield self.env.timeout(processing_time)
 
                 # Register data in order
-                order["process_finished"] += 1
-                order["processes"][process] = self.env.now
+                order.process_finished += 1
 
                 end_time = self.env.now
 
