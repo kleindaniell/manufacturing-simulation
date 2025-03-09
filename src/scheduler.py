@@ -1,14 +1,22 @@
 import simpy
-from control import Info, Controller, ProductionOrder
+from control import Stores, Controller, ProductionOrder
 
 
 class Scheduler:
-    def __init__(self, env: simpy.Environment, info: Info):
-        self.env = env
-        self.info = info
-        self.controller = Controller(self.env, self.info)
+    def __init__(self, store: Stores, interval: int):
+        self.store: Stores = store
+        self.env: simpy.Environment = store.env
+        self.interval = interval
+        self.controller = Controller(self.env, self.store)
+        
+        self.env.process(self.release_uniform())
+
 
     def release_uniform(self):
-        self.controller.release_production_order()
+        order = ProductionOrder(self.env, self.store, "produto01")
+        print(order.to_dict())
+        order.release()
+        yield self.env.timeout(self.interval)
+
     
         

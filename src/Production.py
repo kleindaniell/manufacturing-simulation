@@ -1,12 +1,12 @@
 import simpy
-from control import Info, ProductionOrder
+from control import Stores, ProductionOrder
 from utils import random_number
 
 
 class Production:
-    def __init__(self, env: simpy.Environment, info: Info, warmup: int = 0):
-        self.env = env
-        self.info: Info = info
+    def __init__(self, store: Stores, warmup: int = 0):
+        self.store: Stores = store
+        self.env: simpy.Environment = store.env
         self.warmup = warmup
         self._create_resources()
 
@@ -14,8 +14,8 @@ class Production:
         self.resources = {}
         self.machine_down = {}
 
-        for resource in self.info.resources:
-            resource_config = self.info.resources.get(resource)
+        for resource in self.store.resources:
+            resource_config = self.store.resources.get(resource)
             quantity = resource_config.get("quantity", 1)
 
             self.resources[resource] = simpy.Resource(self.env, quantity)
@@ -30,12 +30,12 @@ class Production:
     def _breakdowns(self, resource):
         try:
             while True:
-                tbf_dist = self.info.resources[resource]["tbf"].get("dist", "constant")
-                tbf_params = self.info.resources[resource]["tbf"].get("params", [0])
+                tbf_dist = self.store.resources[resource]["tbf"].get("dist", "constant")
+                tbf_params = self.store.resources[resource]["tbf"].get("params", [0])
                 tbf = random_number(tbf_dist, tbf_params)
 
-                ttr_dist = self.info.resources[resource]["ttr"].get("dist", "constant")
-                ttr_params = self.info.resources[resource]["ttr"].get("params", [0])
+                ttr_dist = self.store.resources[resource]["ttr"].get("dist", "constant")
+                ttr_params = self.store.resources[resource]["ttr"].get("params", [0])
                 ttr = random_number(ttr_dist, ttr_params)
 
                 yield self.env.timeout(tbf)
@@ -46,7 +46,7 @@ class Production:
                 breakdown_end = self.env.now
 
                 if self.env.now >= self.warmup:
-                    self.info.resource_breakdowns[resource].append(
+                    self.store.resource_breakdowns[resource].append(
                         [breakdown_start, breakdown_end]
                     )
 
@@ -55,15 +55,15 @@ class Production:
 
     def _transportation(self, resource):
         while True:
-            order: ProductionOrder = yield self.info.resource_output[resource].get()
+            order: ProductionOrder = yield self.store.resource_output[resource].get()
 
             if order.process_total == order.process_finished:
                 order.finished = self.env.now
-                yield self.info.finished_orders.put(order)
+                yield self.store.finished_orders.put(order)
             else:
                 process_id = order.process_finished
-                next_resource = self.info.processes_value_list[process_id]["resource"]
-                yield self.info.resource_input[next_resource].put(order)
+                next_resource = self.store.processes_value_list[process_id]["resource"]
+                yield self.store.resource_input[next_resource].put(order)
 
     def _production_system(self, resource):
         last_process = None
@@ -73,18 +73,21 @@ class Production:
             yield self.machine_down[resource]
 
             # Get order from queue
-            order: ProductionOrder = self._get_order_resource_queue(resource, "fifo")
-            product = order.product
+            order_gen = self._get_order_resource_queue(resource, "fifo")
+            print(order_gen)
+            order = next(order_gen)
+            print(order)
+            product = order["product"]
             process = order.process_finished
 
             # Check setup
             if last_product == product and last_process == process:
                 setup_time = 0
             else:
-                setup_dist = self.info.resources[resource]["setup"].get(
+                setup_dist = self.store.resources[resource]["setup"].get(
                     "dist", "constant"
                 )
-                setup_params = self.info.resources[resource]["setup"].get("params", [0])
+                setup_params = self.store.resources[resource]["setup"].get("params", [0])
                 setup_time = random_number(setup_dist, setup_params)
                 # if self.env.now >= self.warmup:
                 # self.setups_cout[resource] += 1
@@ -97,10 +100,10 @@ class Production:
 
                 yield self.env.timeout(setup_time)
 
-                process_time_dist = self.info.processes[process]["processing_time"].get(
+                process_time_dist = self.store.processes[process]["processing_time"].get(
                     "dist"
                 )
-                process_time_params = self.info.processes[process][
+                process_time_params = self.store.processes[process][
                     "processing_time"
                 ].get("params")
 
@@ -124,11 +127,13 @@ class Production:
                 #     self.utilization[resource] += round(end_time - start_time, 8)
 
     def _get_order_resource_queue(self, resource, method):
-        match method:
-            case "fifo":
-                order = yield self.info.resources_input[resource].get()
-            case "toc_penetration":
-                # TODO: implement filter for toc penetration method
-                order = yield self.info.resources_input[resource].get()
+        # match method:
+        #     case "fifo":
+        #         order = yield self.store.resource_input[resource].get()
+        #         print(order)
+        #     case "toc_penetration":
+        #         # TODO: implement filter for toc penetration method
+        #         order = yield self.store.resource_input[resource].get()
 
-        return order
+        yield self.store.resource_input[resource].get()
+        

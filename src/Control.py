@@ -1,27 +1,7 @@
 import simpy
 
-class ProductionOrder:
-    _wip_counter = 0
 
-    def __init__(self):
-        self.id = ProductionOrder._wip_counter
-        ProductionOrder._wip_counter += 1
-
-        self.product: str
-        self.schedule: int
-        self.released: int
-        self.duedate: float
-        self.finished: bool
-        self.quantity: int
-        self.priority: int
-        self.process_total: int
-        self.process_finished: int
-        self.processes: dict
-
-    def to_dict(self) -> dict:
-        return self.__dict__
-
-class Info:
+class Stores:
     def __init__(
         self,
         env: simpy.Environment,
@@ -79,75 +59,64 @@ class Info:
             self.delivered_late[product] = simpy.Container(self.env)
             self.lost_sales[product] = simpy.Container(self.env)
             self.wip[product] = simpy.Container(self.env)
+   
+    
+class ProductionOrder:
+    _wip_counter = 0
 
-class Controller:
-    def __init__(self, env: simpy.Environment, info: Info):
+    def __init__(
+        self,
+        env: simpy.Environment,
+        info: Info,
+        product: str,
+        quantity: int = 1,
+        schedule: float = 0,
+        released: int = -1,
+        duedate: float = 0,
+        finished: bool = False,
+        priority: int = 0,
+    ):
+        self.id = ProductionOrder._wip_counter
+        ProductionOrder._wip_counter += 1
+
         self.env = env
         self.info = info
+        self.product = product
+        self.schedule = schedule
+        self.released = released
+        self.duedate = duedate
+        self.finished = finished
+        self.quantity = quantity
+        self.priority = priority 
+        self.process_total = 0
+        self.process_finished = 0
+
+    def to_dict(self) -> dict:
+
+
+        return self.__dict__
     
-    def release_production_order(
-        self,
-        product,
-        quantity,
-        schedule = 0,
-        duedate = 0,
-        priority = 0,
-    ):  
+
+    def release(self) -> None:
+        self.env.process(self._process())
+
+    def _process(self):
         
-        order = self._make_production_order(
-            product = product,
-            quantity = quantity,
-            schedule = schedule,
-            duedate = duedate,
-            priority = priority
+        self.process_total = len(
+            self.info.products[self.product]["processes"]
         )
-        
-        self.env.process(self._process_production_order(order))
 
-        
-    def _make_production_order(
-        self,
-        product,
-        quantity,
-        schedule = 0,
-        released = -1,
-        duedate = 0,
-        finished = False,
-        priority = 0,
-    ):
-
-        production_order = ProductionOrder()
-        production_order.product = product
-        production_order.schedule = schedule
-        production_order.released = released
-        production_order.duedate = duedate
-        production_order.finished = finished
-        production_order.quantity = quantity
-        production_order.priority = priority 
-        production_order.process_total = len(
-            self.info.products[product]["processes"]
-        )
-        production_order.process_finished = 0
-
-        return production_order
-
-
-    def _process_production_order(self, order: ProductionOrder):
-        product = order.product
-        schedule = order.schedule
-
-        first_process = next(iter(self.info.products[product]["processes"])) 
-        first_resource = self.info.products[product]["processes"][first_process]["resource"]
-        if schedule > self.env.now:
-            delay = schedule - self.env.now
+        first_process = next(iter(self.info.products[self.product]["processes"])) 
+        first_resource = self.info.products[self.product]["processes"][first_process]["resource"]
+        if self.schedule > self.env.now:
+            delay = self.schedule - self.env.now
             yield self.env.timeout(delay)
         else:
-            order.released = self.env.now
+            self.released = self.env.now
                 
         # Add order to first resource input
-        yield self.info.resource_input[first_resource].put(order)
+        print(self.to_dict())
+        yield self.info.resource_input[first_resource].put(self.to_dict())
     
-    
-
 
 

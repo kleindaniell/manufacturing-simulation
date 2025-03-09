@@ -1,5 +1,6 @@
 from production import Production
 from control import Info
+from scheduler import Scheduler
 
 
 import simpy
@@ -38,7 +39,9 @@ class Simulation():
 
 
         info = Info(self.env, self.resources_config, self.products_config)
-        production = Production(self.env, info, self.warmup)
+        scheduler = Scheduler(self.env, info, self.schedule_interval)
+        # production = Production(self.env, info, self.warmup)
+        
     
     def run_simulation(self):
         self.env.run(run_until)
@@ -46,17 +49,17 @@ class Simulation():
 
 if __name__ == "__main__":
     
-    resource_path = Path("../config/resources.yaml")
+    resource_path = Path("config/resources.yaml")
     with open(resource_path, 'r') as file:
         resources_cfg = yaml.safe_load(file)
 
-    products_path = Path("../config/products.yaml")
+    products_path = Path("config/products.yaml")
     with open(products_path, 'r') as file:
         products_cfg = yaml.safe_load(file)
 
     run_until = 1000
     schedule_interval = 72
-    monitor_interval = 722
+    monitor_interval = 720
    
     sim = Simulation(
         run_until=run_until, 
