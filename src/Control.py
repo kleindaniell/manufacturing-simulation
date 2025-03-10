@@ -59,15 +59,21 @@ class Stores:
             self.delivered_late[product] = simpy.Container(self.env)
             self.lost_sales[product] = simpy.Container(self.env)
             self.wip[product] = simpy.Container(self.env)
-   
+
+class Info:
+    def __init__(
+            self,
+            stores: Stores,           
+        ):
+        self.store = stores
+
     
 class ProductionOrder:
     _wip_counter = 0
 
     def __init__(
         self,
-        env: simpy.Environment,
-        info: Info,
+        stores: Stores,
         product: str,
         quantity: int = 1,
         schedule: float = 0,
@@ -79,8 +85,8 @@ class ProductionOrder:
         self.id = ProductionOrder._wip_counter
         ProductionOrder._wip_counter += 1
 
-        self.env = env
-        self.info = info
+        self.env = stores.env
+        self.stores = stores
         self.product = product
         self.schedule = schedule
         self.released = released
@@ -90,12 +96,26 @@ class ProductionOrder:
         self.priority = priority 
         self.process_total = 0
         self.process_finished = 0
+        
 
     def to_dict(self) -> dict:
+        keys = [
+            "product",
+            "schedule",
+            "released",
+            "duedate",
+            "finished",
+            "quantity",
+            "priority",
+            "process_total",
+            "process_finished",
+        ]
 
-
-        return self.__dict__
-    
+        dict_tmp = {
+            key: self.__dict__[key] for key in keys if key in self.__dict__
+        }
+        return dict_tmp
+           
 
     def release(self) -> None:
         self.env.process(self._process())
@@ -103,11 +123,11 @@ class ProductionOrder:
     def _process(self):
         
         self.process_total = len(
-            self.info.products[self.product]["processes"]
+            self.stores.products[self.product]["processes"]
         )
 
-        first_process = next(iter(self.info.products[self.product]["processes"])) 
-        first_resource = self.info.products[self.product]["processes"][first_process]["resource"]
+        first_process = next(iter(self.stores.products[self.product]["processes"])) 
+        first_resource = self.stores.products[self.product]["processes"][first_process]["resource"]
         if self.schedule > self.env.now:
             delay = self.schedule - self.env.now
             yield self.env.timeout(delay)
@@ -115,8 +135,7 @@ class ProductionOrder:
             self.released = self.env.now
                 
         # Add order to first resource input
-        print(self.to_dict())
-        yield self.info.resource_input[first_resource].put(self.to_dict())
+        yield self.stores.resource_input[first_resource].put(self.to_dict())
     
 
 

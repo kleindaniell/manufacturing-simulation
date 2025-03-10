@@ -1,6 +1,7 @@
 from production import Production
-from control import Info
+from control import Stores
 from scheduler import Scheduler
+from monitor import Monitor
 
 
 import simpy
@@ -37,10 +38,10 @@ class Simulation():
         self.schedule_interval = schedule_interval
         self.constraint = set_constraint
 
-
-        info = Info(self.env, self.resources_config, self.products_config)
-        scheduler = Scheduler(self.env, info, self.schedule_interval)
-        # production = Production(self.env, info, self.warmup)
+        self.stores = Stores(self.env, self.resources_config, self.products_config)
+        self.monitor = Monitor(self.stores, self.monitor_interval)
+        self.scheduler = Scheduler(self.stores, self.schedule_interval)
+        self.production = Production(self.stores, warmup=0)
         
     
     def run_simulation(self):

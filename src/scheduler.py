@@ -1,5 +1,5 @@
 import simpy
-from control import Stores, Controller, ProductionOrder
+from control import Stores, ProductionOrder
 
 
 class Scheduler:
@@ -7,14 +7,13 @@ class Scheduler:
         self.store: Stores = store
         self.env: simpy.Environment = store.env
         self.interval = interval
-        self.controller = Controller(self.env, self.store)
         
         self.env.process(self.release_uniform())
 
 
     def release_uniform(self):
-        order = ProductionOrder(self.env, self.store, "produto01")
-        print(order.to_dict())
+        order = ProductionOrder(self.store, "produto01")
+        # print(order.to_dict())
         order.release()
         yield self.env.timeout(self.interval)
 
