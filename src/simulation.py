@@ -13,7 +13,7 @@ from pathlib import Path
 from time import sleep
 
 
-class Simulation():
+class Simulation:
     def __init__(
         self,
         run_until: int,
@@ -21,7 +21,7 @@ class Simulation():
         products_cfg: dict,
         schedule_interval: int,
         set_constraint: int = None,
-        monitor_interval: int = None,
+        monitor_interval: int = 0,
         warmup: bool = False,
         seed: int = None,
     ):
@@ -40,34 +40,33 @@ class Simulation():
 
         self.stores = Stores(self.env, self.resources_config, self.products_config)
         self.monitor = Monitor(self.stores, self.monitor_interval)
-        self.scheduler = Scheduler(self.stores, self.schedule_interval)
         self.production = Production(self.stores, warmup=0)
-        
-    
+        self.scheduler = Scheduler(self.stores, self.schedule_interval)
+
     def run_simulation(self):
-        self.env.run(run_until)
+        print(self.run_until)
+        self.env.run(until=self.run_until)
 
 
 if __name__ == "__main__":
-    
     resource_path = Path("config/resources.yaml")
-    with open(resource_path, 'r') as file:
+    with open(resource_path, "r") as file:
         resources_cfg = yaml.safe_load(file)
 
     products_path = Path("config/products.yaml")
-    with open(products_path, 'r') as file:
+    with open(products_path, "r") as file:
         products_cfg = yaml.safe_load(file)
 
     run_until = 1000
     schedule_interval = 72
-    monitor_interval = 720
-   
+    monitor_interval = 36
+
     sim = Simulation(
-        run_until=run_until, 
-        resources_cfg=resources_cfg, 
-        products_cfg=products_cfg, 
+        run_until=run_until,
+        resources_cfg=resources_cfg,
+        products_cfg=products_cfg,
         schedule_interval=schedule_interval,
+        monitor_interval=monitor_interval,
     )
 
     sim.run_simulation()
-    

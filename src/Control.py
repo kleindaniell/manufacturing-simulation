@@ -27,15 +27,18 @@ class Stores:
             self.processes_value_list[product] = list(processes.values())
 
     def _create_resources_stores(self) -> None:
-        
         self.resource_output = {}
         self.resource_input = {}
+        self.resource_processing = {}
+        self.resource_transport = {}
         self.resource_utilization = {}
         self.resource_breakdowns = {}
 
         for resource in self.resources:
             self.resource_output[resource] = simpy.FilterStore(self.env)
             self.resource_input[resource] = simpy.FilterStore(self.env)
+            self.resource_processing[resource] = simpy.Store(self.env)
+            self.resource_transport[resource] = simpy.Store(self.env)
             self.resource_utilization[resource] = 0
             self.resource_breakdowns[resource] = []
 
@@ -60,14 +63,15 @@ class Stores:
             self.lost_sales[product] = simpy.Container(self.env)
             self.wip[product] = simpy.Container(self.env)
 
+
 class Info:
     def __init__(
-            self,
-            stores: Stores,           
-        ):
+        self,
+        stores: Stores,
+    ):
         self.store = stores
 
-    
+
 class ProductionOrder:
     _wip_counter = 0
 
@@ -93,10 +97,9 @@ class ProductionOrder:
         self.duedate = duedate
         self.finished = finished
         self.quantity = quantity
-        self.priority = priority 
+        self.priority = priority
         self.process_total = 0
         self.process_finished = 0
-        
 
     def to_dict(self) -> dict:
         keys = [
@@ -111,31 +114,24 @@ class ProductionOrder:
             "process_finished",
         ]
 
-        dict_tmp = {
-            key: self.__dict__[key] for key in keys if key in self.__dict__
-        }
+        dict_tmp = {key: self.__dict__[key] for key in keys if key in self.__dict__}
         return dict_tmp
-           
 
     def release(self) -> None:
         self.env.process(self._process())
 
     def _process(self):
-        
-        self.process_total = len(
-            self.stores.products[self.product]["processes"]
-        )
+        self.process_total = len(self.stores.products[self.product]["processes"])
 
-        first_process = next(iter(self.stores.products[self.product]["processes"])) 
-        first_resource = self.stores.products[self.product]["processes"][first_process]["resource"]
+        first_process = next(iter(self.stores.products[self.product]["processes"]))
+        first_resource = self.stores.products[self.product]["processes"][first_process][
+            "resource"
+        ]
         if self.schedule > self.env.now:
             delay = self.schedule - self.env.now
             yield self.env.timeout(delay)
         else:
             self.released = self.env.now
-                
+
         # Add order to first resource input
         yield self.stores.resource_input[first_resource].put(self.to_dict())
-    
-
-
