@@ -1,5 +1,5 @@
 import simpy
-from control import Stores
+from rlsim.control import Stores
 
 import pandas as pd
 import numpy as np

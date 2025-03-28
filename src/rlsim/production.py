@@ -1,6 +1,6 @@
 import simpy
-from control import Stores, ProductionOrder
-from utils import random_number
+from rlsim.control import Stores, ProductionOrder
+from rlsim.utils import random_number
 
 
 class Production:

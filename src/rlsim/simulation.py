@@ -1,7 +1,8 @@
-from production import Production
-from control import Stores
-from scheduler import Scheduler
-from monitor import Monitor
+from rlsim.production import Production
+from rlsim.control import Stores
+from rlsim.scheduler import Scheduler
+from rlsim.monitor import Monitor
+from rlsim.inbound import Inbound
 
 
 import simpy
@@ -42,6 +43,7 @@ class Simulation:
         self.monitor = Monitor(self.stores, self.monitor_interval)
         self.production = Production(self.stores, warmup=0)
         self.scheduler = Scheduler(self.stores, self.schedule_interval)
+        self.inboud = Inbound(self.stores, self.products_config)
 
     def run_simulation(self):
         print(self.run_until)

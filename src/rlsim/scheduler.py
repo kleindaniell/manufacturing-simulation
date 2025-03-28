@@ -1,5 +1,5 @@
 import simpy
-from control import Stores, ProductionOrder
+from rlsim.control import Stores, ProductionOrder
 
 
 class Scheduler:
