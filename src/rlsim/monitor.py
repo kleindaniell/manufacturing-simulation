@@ -1,5 +1,6 @@
 import simpy
 from rlsim.control import Stores
+from typing import Union, Tuple
 
 import pandas as pd
 import numpy as np
@@ -27,8 +28,11 @@ class Monitor:
             # orders = self.measure_total_wip()
             # print(f"wip: {self.env.now} {len(orders)}")
 
-            resources_queue = self.measure_resource_queues()
-            print(resources_queue)
+            wip, queue = self.measure_wip()
+            print("WIP")
+            print(wip)
+            print("Queue")
+            print(queue)
             yield self.env.timeout(self.interval)
             # print(self.env.now)
 
@@ -41,21 +45,29 @@ class Monitor:
             orders.extend(self.stores.resource_transport[resource].items)
         return orders
 
-    def measure_resource_queues(self) -> pd.DataFrame:
+    def measure_wip(self) -> tuple[pd.DataFrame, pd.DataFrame]:
         resources_list = self.stores.resources.keys()
         products_list = self.stores.products.keys()
 
-        df = pd.DataFrame(
+        df_wip = pd.DataFrame(
             np.zeros((len(products_list), len(resources_list))),
             index=products_list,
             columns=resources_list,
         )
 
+        df_queue = df_wip.copy()
+
         for resource in resources_list:
-            orders = self.stores.resource_input[resource].items
-            for order in orders:
-                product = order["product"]
+            orders_queue = list(self.stores.resource_input[resource].items)
+            orders_queue.extend(self.stores.resource_output[resource].items)
+            orders_queue.extend(self.stores.resource_transport[resource].items)
+            for order in orders_queue:
+                product = order.product
+                df_queue.loc[product, resource] += 1
 
-                df.loc[product, resource] += 1
+            orders_wip = list(self.stores.resource_processing[resource].items)
+            for order in orders_wip:
+                product = order.product
+                df_wip.loc[product, resource] += 1
 
-        return df
+        return (df_wip, df_queue)

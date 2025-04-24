@@ -16,9 +16,9 @@ class Inbound:
         self.products = products_cfg
 
         for product in self.products.keys():
-            self.env.process(self._generate_orders(product))
+            self.env.process(self._generate_demand_orders(product))
 
-    def _generate_orders(self, product):
+    def _generate_demand_orders(self, product):
         product_config = self.products[product]
 
         freq_dist = product_config["demand"]["freq"].get("dist")
@@ -48,6 +48,6 @@ class Inbound:
             }
 
             yield self.stores.demand_orders[product].put(order)
-            yield self.stores.demand_orders[product].put(order)
+
             # yield self.actual_demand[product].put(demand["quantity"])
             self.order_id += 1

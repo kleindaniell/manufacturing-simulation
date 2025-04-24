@@ -1,9 +1,8 @@
 from rlsim.production import Production
 from rlsim.control import Stores
-from rlsim.scheduler import Scheduler
 from rlsim.monitor import Monitor
 from rlsim.inbound import Inbound
-
+from rlsim.simple_scheduler import SimpleScheduler
 
 import simpy
 import random
@@ -42,7 +41,7 @@ class Simulation:
         self.stores = Stores(self.env, self.resources_config, self.products_config)
         self.monitor = Monitor(self.stores, self.monitor_interval)
         self.production = Production(self.stores, warmup=0)
-        self.scheduler = Scheduler(self.stores, self.schedule_interval)
+        self.scheduler = SimpleScheduler(self.stores, self.schedule_interval)
         self.inboud = Inbound(self.stores, self.products_config)
 
     def run_simulation(self):
@@ -59,9 +58,9 @@ if __name__ == "__main__":
     with open(products_path, "r") as file:
         products_cfg = yaml.safe_load(file)
 
-    run_until = 1000
-    schedule_interval = 72
-    monitor_interval = 36
+    run_until = 10
+    schedule_interval = 1
+    monitor_interval = 1
 
     sim = Simulation(
         run_until=run_until,

@@ -1,21 +1,43 @@
+from abc import ABC, abstractmethod
+
 import simpy
-from rlsim.control import Stores, ProductionOrder
+
+from rlsim.control import ProductionOrder, Stores
 
 
-class Scheduler:
+class Scheduler(ABC):
     def __init__(self, store: Stores, interval: int):
         self.stores = store
         self.env: simpy.Environment = store.env
         self.interval = interval
 
-        self.env.process(self.release_uniform())
+    def run_scheduler(self):
+        self.env.process(self._scheduler())
 
-    def release_uniform(self):
-        while True:
-            order1 = ProductionOrder(self.stores, "produto01")
-            order2 = ProductionOrder(self.stores, "produto02")
-            # print(order.to_dict())
-            order1.release()
-            # order1.release()
-            order2.release()
-            yield self.env.timeout(self.interval)
+    def release_order(self, productionOrder: ProductionOrder):
+        product = productionOrder.product
+
+        last_process = len(self.stores.products[product]["processes"])
+        first_process = next(iter(self.stores.products[product]["processes"]))
+        first_resource = self.stores.products[product]["processes"][first_process][
+            "resource"
+        ]
+
+        productionOrder.process_total = last_process
+        productionOrder.process_finished = 0
+
+        if (
+            productionOrder.schedule is not None
+            and productionOrder.schedule > self.env.now
+        ):
+            delay = productionOrder.schedule - self.env.now
+            yield self.env.timeout(delay)
+
+        productionOrder.released = self.env.now
+
+        # Add productionOrder to first resource input
+        yield self.stores.resource_input[first_resource].put(productionOrder)
+
+    @abstractmethod
+    def _scheduler(self):
+        pass

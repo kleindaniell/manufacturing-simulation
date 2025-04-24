@@ -1,3 +1,6 @@
+from dataclasses import dataclass, field
+from typing import Optional
+
 import simpy
 
 
@@ -64,53 +67,41 @@ class Stores:
             self.wip[product] = simpy.Container(self.env)
 
 
+@dataclass
 class ProductionOrder:
-    _wip_counter = 0
+    product: str
+    quantity: int
+    schedule: Optional[float] = None
+    released: Optional[int] = None
+    duedate: Optional[float] = None
+    finished: Optional[bool] = None
+    priority: Optional[int] = None
+    process_total: Optional[int] = None
+    process_finished: Optional[int] = None
+    id: int = field(init=False)
 
-    def __init__(
-        self,
-        stores: Stores,
-        product: str,
-        quantity: int = 1,
-        schedule: float = 0,
-        released: int = -1,
-        duedate: float = 0,
-        finished: bool = False,
-        priority: int = 0,
-    ):
-        self.id = ProductionOrder._wip_counter
-        ProductionOrder._wip_counter += 1
+    _next_id = 1
 
-        self.env = stores.env
-        self.stores = stores
-        self.product = product
-        self.schedule = schedule
-        self.released = released
-        self.duedate = duedate
-        self.finished = finished
-        self.quantity = quantity
-        self.priority = priority
-        self.process_total = 0
-        self.process_finished = 0
+    def __post_init__(self):
+        self.id = ProductionOrder._next_id
+        ProductionOrder._next_id += 1
 
     def to_dict(self) -> dict:
         keys = [
             "product",
+            "quantity",
             "schedule",
             "released",
             "duedate",
             "finished",
-            "quantity",
             "priority",
             "process_total",
             "process_finished",
+            "id",
         ]
 
         dict_tmp = {key: self.__dict__[key] for key in keys if key in self.__dict__}
         return dict_tmp
-
-    def release(self) -> None:
-        self.env.process(self._process())
 
     def _process(self):
         self.process_total = len(self.stores.products[self.product]["processes"])
