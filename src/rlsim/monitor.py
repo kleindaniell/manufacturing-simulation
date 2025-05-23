@@ -63,11 +63,11 @@ class Monitor:
             orders_queue.extend(self.stores.resource_transport[resource].items)
             for order in orders_queue:
                 product = order.product
-                df_queue.loc[product, resource] += 1
+                df_queue.loc[product, resource] += order.quantity
 
             orders_wip = list(self.stores.resource_processing[resource].items)
             for order in orders_wip:
                 product = order.product
-                df_wip.loc[product, resource] += 1
+                df_wip.loc[product, resource] += order.quantity
 
         return (df_wip, df_queue)

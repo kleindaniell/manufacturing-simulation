@@ -11,9 +11,6 @@ class Scheduler(ABC):
         self.env: simpy.Environment = store.env
         self.interval = interval
 
-    def run_scheduler(self):
-        self.env.process(self._scheduler())
-
     def release_order(self, productionOrder: ProductionOrder):
         product = productionOrder.product
 
@@ -41,3 +38,7 @@ class Scheduler(ABC):
     @abstractmethod
     def _scheduler(self):
         pass
+
+    # @abstractmethod
+    def run_scheduler(self):
+        self.env.process(self._scheduler())

@@ -58,9 +58,9 @@ if __name__ == "__main__":
     with open(products_path, "r") as file:
         products_cfg = yaml.safe_load(file)
 
-    run_until = 10
+    run_until = 1000
     schedule_interval = 1
-    monitor_interval = 1
+    monitor_interval = 100
 
     sim = Simulation(
         run_until=run_until,

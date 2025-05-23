@@ -72,6 +72,7 @@ class Production:
                 productionOrder.finished = self.env.now
                 yield self.stores.resource_transport[resource].get()
                 yield self.stores.finished_orders[product].put(productionOrder)
+                yield self.stores.finished_goods[product].put(productionOrder.quantity)
 
             else:
                 process_id = productionOrder.process_finished

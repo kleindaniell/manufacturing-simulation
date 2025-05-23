@@ -103,18 +103,31 @@ class ProductionOrder:
         dict_tmp = {key: self.__dict__[key] for key in keys if key in self.__dict__}
         return dict_tmp
 
-    def _process(self):
-        self.process_total = len(self.stores.products[self.product]["processes"])
 
-        first_process = next(iter(self.stores.products[self.product]["processes"]))
-        first_resource = self.stores.products[self.product]["processes"][first_process][
-            "resource"
+@dataclass
+class DemandOrder:
+    product: str
+    quantity: int
+    duedate: Optional[float] = None
+    arived: Optional[float] = None
+    delivered: Optional[int] = None
+    id: int = field(init=False)
+
+    _next_id = 1
+
+    def __post_init__(self):
+        self.id = DemandOrder._next_id
+        DemandOrder._next_id += 1
+
+    def to_dict(self) -> dict:
+        keys = [
+            "product",
+            "quantity",
+            "duedate",
+            "arived",
+            "delivered",
+            "id",
         ]
-        if self.schedule > self.env.now:
-            delay = self.schedule - self.env.now
-            yield self.env.timeout(delay)
-        else:
-            self.released = self.env.now
 
-        # Add order to first resource input
-        yield self.stores.resource_input[first_resource].put(self.to_dict())
+        dict_tmp = {key: self.__dict__[key] for key in keys if key in self.__dict__}
+        return dict_tmp
