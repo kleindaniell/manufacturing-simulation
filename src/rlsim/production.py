@@ -5,10 +5,11 @@ from rlsim.utils import random_number
 
 
 class Production:
-    def __init__(self, stores: Stores, warmup: int = 0):
+    def __init__(self, stores: Stores, warmup: int = 0, order_selection_fn=None):
         self.stores: Stores = stores
         self.env: simpy.Environment = stores.env
         self.warmup = warmup
+        self.order_selection_fn = order_selection_fn
         self._create_resources()
 
     def _create_resources(self) -> None:
@@ -91,10 +92,16 @@ class Production:
             yield self.machine_down[resource]
 
             # Get order from queue
-            # order = yield self._get_order_resource_queue(resource, "fifo")
-            productionOrder = yield self.stores.resource_input[resource].get(
-                lambda item: True
-            )
+            if self.order_selection_fn:
+                productionOrderId = self.order_selection_fn(self.stores, resource)
+                productionOrder: ProductionOrder = yield self.stores.resource_input[
+                    resource
+                ].get(lambda item: item == productionOrderId)
+            else:
+                productionOrder: ProductionOrder = yield self.stores.resource_input[
+                    resource
+                ].get()
+
             yield self.stores.resource_processing[resource].put(productionOrder)
 
             product = productionOrder.product
@@ -148,17 +155,3 @@ class Production:
                 yield self.stores.resource_output[resource].put(productionOrder)
                 # if self.env.now > self.warmup:
                 #     self.utilization[resource] += round(end_time - start_time, 8)
-
-    def _get_order_resource_queue(self, resource, method):
-        self.wait_queue[resource] = self.env.event()
-        match method:
-            case "fifo":
-                productionOrder = yield self.stores.resource_input[resource].get()
-
-            case "toc_penetration":
-                # TODO: implement filter for toc penetration method
-                productionOrder = yield self.stores.resource_input[resource].get()
-
-        # order = yield self.stores.resource_input[resource].get()
-
-        return productionOrder
