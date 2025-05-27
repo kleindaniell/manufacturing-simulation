@@ -40,13 +40,27 @@ class Simulation:
 
         self.stores = Stores(self.env, self.resources_config, self.products_config)
         self.monitor = Monitor(self.stores, self.monitor_interval)
-        self.production = Production(self.stores, warmup=0)
+        callback = self.order_selection_callback(self.make_shipping_buffer_test())
+        self.production = Production(self.stores, warmup=0, order_selection_fn=callback)
+
         self.scheduler = SimpleScheduler(self.stores, self.schedule_interval)
         self.inboud = Inbound(self.stores, self.products_config)
 
     def run_simulation(self):
         print(self.run_until)
         self.env.run(until=self.run_until)
+
+    def make_shipping_buffer_test(self):
+
+        return {
+            x: self.products_config["shipping_buffer"]
+            for x in self.products_config.keys()
+        }
+
+    def order_selection_callback(self, buffer):
+        def order_selection(store: Stores, resource):
+            # TODO - make order selector for test
+            orders = store.resource_input[resource].items
 
 
 if __name__ == "__main__":
