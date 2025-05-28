@@ -91,12 +91,18 @@ class Production:
         while True:
             yield self.machine_down[resource]
 
+            productionOrder: ProductionOrder = yield self.stores.resource_input[
+                resource
+            ].get()
+
+            yield self.stores.resource_input[resource].put(productionOrder)
+
             # Get order from queue
-            if self.order_selection_fn:
+            if self.order_selection_fn is not None:
                 productionOrderId = self.order_selection_fn(self.stores, resource)
                 productionOrder: ProductionOrder = yield self.stores.resource_input[
                     resource
-                ].get(lambda item: item == productionOrderId)
+                ].get(lambda item: item.id == productionOrderId)
             else:
                 productionOrder: ProductionOrder = yield self.stores.resource_input[
                     resource
