@@ -1,9 +1,8 @@
-import simpy
-
 from typing import Literal
 
-from rlsim.control import Stores, ProductionOrder, DemandOrder
-from rlsim.utils import random_number
+import simpy
+
+from rlsim.control import DemandOrder, Stores
 
 
 class Outbound:

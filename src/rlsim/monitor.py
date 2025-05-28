@@ -1,9 +1,8 @@
-import simpy
-from rlsim.control import Stores
-from typing import Union, Tuple
-
-import pandas as pd
 import numpy as np
+import pandas as pd
+import simpy
+
+from rlsim.control import Stores
 
 
 class Monitor:

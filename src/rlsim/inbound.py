@@ -1,6 +1,6 @@
 import simpy
 
-from rlsim.control import Stores, DemandOrder
+from rlsim.control import DemandOrder, Stores
 from rlsim.utils import random_number
 
 
