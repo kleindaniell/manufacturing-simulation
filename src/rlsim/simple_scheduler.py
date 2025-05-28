@@ -17,6 +17,7 @@ class SimpleScheduler(Scheduler):
 
             productionOrder = ProductionOrder(product=product, quantity=quantity)
             productionOrder.schedule = self.env.now
+            productionOrder.duedate = demandOrder.duedate
             productionOrder.priority = 0
 
             self.env.process(self.release_order(productionOrder))

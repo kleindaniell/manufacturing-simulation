@@ -32,10 +32,6 @@ class Outbound:
                 self.env.process(self._delivery_instantly(product))
 
     def _delivery_instantly(self, product):
-        """
-        xxx
-        """
-
         while True:
             demandOrder: DemandOrder = yield self.stores.outbound_demand_orders[
                 product
@@ -46,9 +42,9 @@ class Outbound:
             if self.stores.finished_goods[product].level >= quantity:
                 yield self.stores.finished_goods[product].get(quantity)
                 if not self.training:
-                    yield self.stores.delivered_ontime[product].put(demandOrder)
+                    yield self.stores.delivered_ontime[product].put(quantity)
             else:
-                self.stores.lost_sales[product].put(demandOrder)
+                self.stores.lost_sales[product].put(quantity)
 
     def _delivery_as_ready(self, product):
         while True:
@@ -64,9 +60,9 @@ class Outbound:
             demandOrder.delivered = self.env.now
             if not self.training:
                 if demandOrder.delivered <= duedate:
-                    yield self.stores.delivered_ontime[product].put(demandOrder)
+                    yield self.stores.delivered_ontime[product].put(quantity)
                 else:
-                    yield self.stores.delivered_late[product].put(demandOrder)
+                    yield self.stores.delivered_late[product].put(quantity)
 
     def _delivery_on_duedate(self, product):
         def _delivey_order(demandOrder: DemandOrder):
@@ -84,9 +80,9 @@ class Outbound:
             demandOrder.delivered = self.env.now
             if not self.training:
                 if demandOrder.delivered <= duedate:
-                    yield self.stores.delivered_ontime[product].put(demandOrder)
+                    yield self.stores.delivered_ontime[product].put(quantity)
                 else:
-                    yield self.stores.delivered_late[product].put(demandOrder)
+                    yield self.stores.delivered_late[product].put(quantity)
 
         while True:
             demandOrder: DemandOrder = yield self.stores.outbound_demand_orders[

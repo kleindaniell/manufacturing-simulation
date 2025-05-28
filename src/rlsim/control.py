@@ -47,7 +47,6 @@ class Stores:
 
     def _create_products_stores(self) -> None:
         # Outbound Stores
-        self.finished_orders = {}
         self.finished_goods = {}
         # Demand Orders stores
         self.inbound_demand_orders = {}
@@ -56,17 +55,13 @@ class Stores:
         self.delivered_ontime = {}
         self.delivered_late = {}
         self.lost_sales = {}
-        self.wip = {}
-        self.total_wip = simpy.Container
         for product in self.products:
-            self.finished_orders[product] = simpy.FilterStore(self.env)
             self.finished_goods[product] = simpy.Container(self.env)
             self.inbound_demand_orders[product] = simpy.FilterStore(self.env)
             self.outbound_demand_orders[product] = simpy.FilterStore(self.env)
-            self.delivered_ontime[product] = simpy.Store(self.env)
-            self.delivered_late[product] = simpy.Store(self.env)
-            self.lost_sales[product] = simpy.Store(self.env)
-            self.wip[product] = simpy.Container(self.env)
+            self.delivered_ontime[product] = simpy.Container(self.env)
+            self.delivered_late[product] = simpy.Container(self.env)
+            self.lost_sales[product] = simpy.Container(self.env)
 
 
 @dataclass

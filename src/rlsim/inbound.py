@@ -35,13 +35,12 @@ class Inbound:
             yield self.env.timeout(frequency)
 
             duedate += self.env.now
-            now = self.env.now
 
             demandOrder = DemandOrder(
                 product=product,
                 quantity=quantity,
                 duedate=duedate,
-                arived=now,
+                arived=self.env.now,
             )
 
             yield self.stores.inbound_demand_orders[product].put(demandOrder)

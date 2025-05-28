@@ -72,7 +72,6 @@ class Production:
             if productionOrder.process_total == productionOrder.process_finished:
                 productionOrder.finished = self.env.now
                 yield self.stores.resource_transport[resource].get()
-                yield self.stores.finished_orders[product].put(productionOrder)
                 yield self.stores.finished_goods[product].put(productionOrder.quantity)
 
             else:

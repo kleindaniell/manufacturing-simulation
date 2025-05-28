@@ -24,14 +24,8 @@ class Monitor:
     def run(self):
         yield self.env.timeout(self.warmup)
         while True:
-            # orders = self.measure_total_wip()
-            # print(f"wip: {self.env.now} {len(orders)}")
-
-            wip, queue = self.measure_wip()
-            print("WIP")
-            print(wip)
-            print("Queue")
-            print(queue)
+            df_print = self.measure_wip()
+            print(df_print)
             yield self.env.timeout(self.interval)
             # print(self.env.now)
 
@@ -48,13 +42,11 @@ class Monitor:
         resources_list = self.stores.resources.keys()
         products_list = self.stores.products.keys()
 
-        df_wip = pd.DataFrame(
+        df_print = pd.DataFrame(
             np.zeros((len(products_list), len(resources_list))),
             index=products_list,
             columns=resources_list,
         )
-
-        df_queue = df_wip.copy()
 
         for resource in resources_list:
             orders_queue = list(self.stores.resource_input[resource].items)
@@ -62,11 +54,18 @@ class Monitor:
             orders_queue.extend(self.stores.resource_transport[resource].items)
             for order in orders_queue:
                 product = order.product
-                df_queue.loc[product, resource] += order.quantity
+                df_print.loc[product, resource] += order.quantity
 
-            orders_wip = list(self.stores.resource_processing[resource].items)
-            for order in orders_wip:
-                product = order.product
-                df_wip.loc[product, resource] += order.quantity
+        df_print["wip_total"] = df_print.sum(axis=1)
+        df_print["fg"] = 0
+        df_print["onTime"] = 0
+        df_print["late"] = 0
+        for product in products_list:
+            df_print.loc[product, "fg"] = self.stores.finished_goods[product].level
+            df_print.loc[product, "onTime"] = self.stores.delivered_ontime[
+                product
+            ].level
+            df_print.loc[product, "late"] = self.stores.delivered_late[product].level
+            df_print.loc[product, "lost"] = self.stores.lost_sales[product].level
 
-        return (df_wip, df_queue)
+        return df_print
