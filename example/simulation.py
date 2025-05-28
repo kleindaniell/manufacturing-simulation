@@ -36,13 +36,11 @@ class Simulation:
         self.run_until = run_until
         self.monitor_interval = monitor_interval
         self.schedule_interval = schedule_interval
-        self.constraint = set_constraint
 
         self.stores = Stores(self.env, self.resources_config, self.products_config)
         self.monitor = Monitor(self.stores, self.monitor_interval)
-        callback = self.order_selection_callback(self.make_shipping_buffer_test())
+        callback = self.order_selection_callback()
         self.production = Production(self.stores, warmup=0, order_selection_fn=callback)
-
         self.scheduler = SimpleScheduler(self.stores, self.schedule_interval)
         self.inboud = Inbound(self.stores, self.products_config)
         self.outbound = Outbound(
@@ -53,37 +51,27 @@ class Simulation:
         print(self.run_until)
         self.env.run(until=self.run_until)
 
-    def make_shipping_buffer_test(self):
-        return {
-            x: self.products_config[x]["shipping_buffer"]
-            for x in self.products_config.keys()
-        }
-
-    def order_selection_callback(self, buffer: dict):
+    def order_selection_callback(self):
         def order_selection(store: Stores, resource):
-            # TODO - make order selector for test
             orders: List[ProductionOrder] = store.resource_input[resource].items
-            priorities = [
-                [order.id, order.released * buffer[order.product]] for order in orders
-            ]
-            order_id, _ = sorted(priorities, key=lambda x: x[1])[0]
-            return order_id
+            order = sorted(orders, key=lambda x: x.duedate)[0]
+            return order.id
 
         return order_selection
 
 
 if __name__ == "__main__":
-    resource_path = Path("config/resources.yaml")
+    resource_path = Path("example/config/resources.yaml")
     with open(resource_path, "r") as file:
         resources_cfg = yaml.safe_load(file)
 
-    products_path = Path("config/products.yaml")
+    products_path = Path("example/config/products.yaml")
     with open(products_path, "r") as file:
         products_cfg = yaml.safe_load(file)
 
-    run_until = 1000
-    schedule_interval = 10
-    monitor_interval = 10
+    run_until = 2400
+    schedule_interval = 72
+    monitor_interval = 720
 
     sim = Simulation(
         run_until=run_until,
