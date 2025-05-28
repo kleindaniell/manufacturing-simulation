@@ -38,7 +38,9 @@ class Outbound:
         """
 
         while True:
-            demandOrder: DemandOrder = yield self.stores.demand_orders[product].get()
+            demandOrder: DemandOrder = yield self.stores.outbound_demand_orders[
+                product
+            ].get()
 
             quantity = demandOrder.quantity
 
@@ -51,7 +53,9 @@ class Outbound:
 
     def _delivery_as_ready(self, product):
         while True:
-            demandOrder: DemandOrder = yield self.stores.demand_orders[product].get()
+            demandOrder: DemandOrder = yield self.stores.outbound_demand_orders[
+                product
+            ].get()
             quantity = demandOrder.quantity
             duedate = demandOrder.duedate
 
@@ -86,5 +90,7 @@ class Outbound:
                     yield self.stores.delivered_late[product].put(demandOrder)
 
         while True:
-            demandOrder: DemandOrder = yield self.stores.demand_orders[product].get()
+            demandOrder: DemandOrder = yield self.stores.outbound_demand_orders[
+                product
+            ].get()
             self.env.process(_delivey_order(demandOrder))

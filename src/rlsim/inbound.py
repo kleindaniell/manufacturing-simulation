@@ -10,7 +10,6 @@ class Inbound:
         stores: Stores,
         products_cfg: dict,
     ):
-
         self.stores = stores
         self.env: simpy.Environment = stores.env
         self.products = products_cfg
@@ -45,6 +44,6 @@ class Inbound:
                 arived=now,
             )
 
-            yield self.stores.demand_orders[product].put(demandOrder)
+            yield self.stores.inbound_demand_orders[product].put(demandOrder)
 
             # yield self.actual_demand[product].put(demand["quantity"])

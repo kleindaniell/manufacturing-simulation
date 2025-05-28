@@ -46,11 +46,12 @@ class Stores:
             self.resource_breakdowns[resource] = []
 
     def _create_products_stores(self) -> None:
-        # Outbound
+        # Outbound Stores
         self.finished_orders = {}
         self.finished_goods = {}
-        # Inbound
-        self.demand_orders = {}
+        # Demand Orders stores
+        self.inbound_demand_orders = {}
+        self.outbound_demand_orders = {}
         # KPIs
         self.delivered_ontime = {}
         self.delivered_late = {}
@@ -60,7 +61,8 @@ class Stores:
         for product in self.products:
             self.finished_orders[product] = simpy.FilterStore(self.env)
             self.finished_goods[product] = simpy.Container(self.env)
-            self.demand_orders[product] = simpy.FilterStore(self.env)
+            self.inbound_demand_orders[product] = simpy.FilterStore(self.env)
+            self.outbound_demand_orders[product] = simpy.FilterStore(self.env)
             self.delivered_ontime[product] = simpy.Store(self.env)
             self.delivered_late[product] = simpy.Store(self.env)
             self.lost_sales[product] = simpy.Store(self.env)

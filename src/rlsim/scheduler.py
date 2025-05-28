@@ -39,6 +39,6 @@ class Scheduler(ABC):
     def _scheduler(self):
         pass
 
-    # @abstractmethod
+    @abstractmethod
     def run_scheduler(self):
-        self.env.process(self._scheduler())
+        pass

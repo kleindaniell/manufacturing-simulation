@@ -18,19 +18,21 @@ class SimpleScheduler(Scheduler):
     #         yield self.env.timeout(self.interval)
 
     def _scheduler(self, product):
-
         while True:
-
-            demandOrder: DemandOrder = yield self.stores.demand_orders[product].get()
+            demandOrder: DemandOrder = yield self.stores.inbound_demand_orders[
+                product
+            ].get()
 
             quantity = demandOrder.quantity
 
             productionOrder = ProductionOrder(product=product, quantity=quantity)
             productionOrder.schedule = self.env.now
             productionOrder.priority = 0
+
             self.env.process(self.release_order(productionOrder))
 
-    def run_scheduler(self):
+            yield self.stores.outbound_demand_orders[product].put(demandOrder)
 
+    def run_scheduler(self):
         for product in self.stores.products.keys():
             self.env.process(self._scheduler(product))
