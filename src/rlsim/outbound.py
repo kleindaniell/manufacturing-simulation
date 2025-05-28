@@ -11,30 +11,33 @@ class Outbound:
         self,
         stores: Stores,
         products_cfg: dict,
-        operation_mode: str,
+        delivery_mode: Literal["asReady", "onDue", "instantly"],
         training: bool = False,
     ):
-
         self.stores = stores
         self.env: simpy.Environment = stores.env
         self.products = products_cfg
-        self.operation_mode = operation_mode
+        self.delivery_mode = delivery_mode
         self.training = training
 
-        if self.operation_mode == "mto_instantly":
+        if self.delivery_mode == "asReady":
             for product in self.products.keys():
-                self.env.process(self._delivery_demand_orders(product))
-        elif self.operation_mode == "mts":
-            for product in self.products.keys():
-                self.env.process(self._sell_demand_orders(product))
+                self.env.process(self._delivery_as_ready(product))
 
-    def _sell_demand_orders(self, product):
+        elif self.delivery_mode == "onDue":
+            for product in self.products.keys():
+                self.env.process(self._delivery_on_duedate(product))
+
+        elif self.delivery_mode == "instantly":
+            for product in self.products.keys():
+                self.env.process(self._delivery_instantly(product))
+
+    def _delivery_instantly(self, product):
         """
         xxx
         """
 
         while True:
-
             demandOrder: DemandOrder = yield self.stores.demand_orders[product].get()
 
             quantity = demandOrder.quantity
@@ -44,12 +47,10 @@ class Outbound:
                 if not self.training:
                     yield self.stores.delivered_ontime[product].put(demandOrder)
             else:
-                self.stores.lost_sales[product].put(quantity)
+                self.stores.lost_sales[product].put(demandOrder)
 
-    def _delivery_demand_orders(self, product, on_due: bool = True) -> None:
-
+    def _delivery_as_ready(self, product):
         while True:
-
             demandOrder: DemandOrder = yield self.stores.demand_orders[product].get()
             quantity = demandOrder.quantity
             duedate = demandOrder.duedate
@@ -63,3 +64,27 @@ class Outbound:
                     yield self.stores.delivered_ontime[product].put(demandOrder)
                 else:
                     yield self.stores.delivered_late[product].put(demandOrder)
+
+    def _delivery_on_duedate(self, product):
+        def _delivey_order(demandOrder: DemandOrder):
+            quantity = demandOrder.quantity
+            duedate = demandOrder.duedate
+
+            # Whait for duedate
+            delay = duedate - self.env.now
+            self.env.timeout(delay)
+
+            # Remove from finished goods
+            yield self.stores.finished_goods[product].get(quantity)
+
+            # Check ontime or late
+            demandOrder.delivered = self.env.now
+            if not self.training:
+                if demandOrder.delivered <= duedate:
+                    yield self.stores.delivered_ontime[product].put(demandOrder)
+                else:
+                    yield self.stores.delivered_late[product].put(demandOrder)
+
+        while True:
+            demandOrder: DemandOrder = yield self.stores.demand_orders[product].get()
+            self.env.process(_delivey_order(demandOrder))

@@ -2,6 +2,7 @@ from rlsim.production import Production
 from rlsim.control import Stores, ProductionOrder
 from rlsim.monitor import Monitor
 from rlsim.inbound import Inbound
+from rlsim.outbound import Outbound
 from rlsim.simple_scheduler import SimpleScheduler
 
 from typing import List
@@ -47,6 +48,9 @@ class Simulation:
 
         self.scheduler = SimpleScheduler(self.stores, self.schedule_interval)
         self.inboud = Inbound(self.stores, self.products_config)
+        self.outbound = Outbound(
+            self.stores, self.products_config, delivery_mode="asReady"
+        )
 
     def run_simulation(self):
         print(self.run_until)

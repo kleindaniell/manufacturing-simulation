@@ -61,9 +61,9 @@ class Stores:
             self.finished_orders[product] = simpy.FilterStore(self.env)
             self.finished_goods[product] = simpy.Container(self.env)
             self.demand_orders[product] = simpy.FilterStore(self.env)
-            self.delivered_ontime[product] = simpy.Container(self.env)
-            self.delivered_late[product] = simpy.Container(self.env)
-            self.lost_sales[product] = simpy.Container(self.env)
+            self.delivered_ontime[product] = simpy.Store(self.env)
+            self.delivered_late[product] = simpy.Store(self.env)
+            self.lost_sales[product] = simpy.Store(self.env)
             self.wip[product] = simpy.Container(self.env)
 
 
