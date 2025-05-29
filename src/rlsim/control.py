@@ -36,6 +36,7 @@ class Stores:
         self.resource_transport = {}
         self.resource_utilization = {}
         self.resource_breakdowns = {}
+        self.resource_setup = {}
 
         for resource in self.resources:
             self.resource_output[resource] = simpy.FilterStore(self.env)

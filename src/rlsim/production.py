@@ -57,7 +57,7 @@ class Production:
 
                 if self.env.now >= self.warmup:
                     self.stores.resource_breakdowns[resource].append(
-                        [breakdown_start, breakdown_end]
+                        {"start": breakdown_start, "end": breakdown_end}
                     )
 
         except:
@@ -123,9 +123,9 @@ class Production:
                     "params", [0]
                 )
                 setup_time = random_number(setup_dist, setup_params)
-                # if self.env.now >= self.warmup:
-                # self.setups_cout[resource] += 1
-                # self.setups_time[resource] += setup_time
+                if self.env.now >= self.warmup:
+                    self.setups_cout[resource] += 1
+                    self.setups_time[resource] += setup_time
 
             last_process = process
 
@@ -158,5 +158,7 @@ class Production:
                 end_time = self.env.now
                 yield self.stores.resource_processing[resource].get()
                 yield self.stores.resource_output[resource].put(productionOrder)
-                # if self.env.now > self.warmup:
-                #     self.utilization[resource] += round(end_time - start_time, 8)
+                if self.env.now > self.warmup:
+                    self.stores.resource_utilization[resource] += round(
+                        end_time - start_time, 8
+                    )
