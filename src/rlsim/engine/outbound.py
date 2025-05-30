@@ -2,7 +2,7 @@ from typing import Literal
 
 import simpy
 
-from rlsim.control import DemandOrder, Stores
+from rlsim.engine.control import DemandOrder, Stores
 
 
 class Outbound:

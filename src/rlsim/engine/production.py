@@ -1,7 +1,7 @@
 import simpy
 
-from rlsim.control import ProductionOrder, Stores
-from rlsim.utils import random_number
+from rlsim.engine.control import ProductionOrder, Stores
+from rlsim.engine.utils import random_number
 
 
 class Production:
@@ -57,15 +57,20 @@ class Production:
 
                 if self.env.now >= self.warmup:
                     self.stores.resource_breakdowns[resource].append(
-                        {"start": breakdown_start, "end": breakdown_end}
+                        {
+                            "time": breakdown_start,
+                            "duration": round(breakdown_end - breakdown_start, 8),
+                        }
                     )
 
-        except:
+        except ValueError:
             pass
 
     def _transportation(self, resource):
         while True:
-            productionOrder = yield self.stores.resource_output[resource].get()
+            productionOrder: ProductionOrder = yield self.stores.resource_output[
+                resource
+            ].get()
             yield self.stores.resource_transport[resource].put(productionOrder)
 
             product = productionOrder.product
@@ -124,8 +129,9 @@ class Production:
                 )
                 setup_time = random_number(setup_dist, setup_params)
                 if self.env.now >= self.warmup:
-                    self.setups_cout[resource] += 1
-                    self.setups_time[resource] += setup_time
+                    self.stores.resource_setup[resource].append(
+                        {"time": self.env.now, "duration": setup_time}
+                    )
 
             last_process = process
 
@@ -157,6 +163,7 @@ class Production:
 
                 end_time = self.env.now
                 yield self.stores.resource_processing[resource].get()
+                yield self.stores.resource_finished[resource].put(productionOrder)
                 yield self.stores.resource_output[resource].put(productionOrder)
                 if self.env.now > self.warmup:
                     self.stores.resource_utilization[resource] += round(

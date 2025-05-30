@@ -2,14 +2,13 @@ from abc import ABC, abstractmethod
 
 import simpy
 
-from rlsim.control import ProductionOrder, Stores
+from rlsim.engine.control import ProductionOrder, Stores
 
 
 class Scheduler(ABC):
-    def __init__(self, store: Stores, interval: int):
+    def __init__(self, store: Stores):
         self.stores = store
         self.env: simpy.Environment = store.env
-        self.interval = interval
 
     def release_order(self, productionOrder: ProductionOrder):
         product = productionOrder.product

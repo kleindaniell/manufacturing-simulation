@@ -1,10 +1,10 @@
-from rlsim.control import DemandOrder, ProductionOrder
-from rlsim.scheduler import Scheduler
+from rlsim.engine.control import DemandOrder, ProductionOrder
+from rlsim.engine.scheduler import Scheduler
 
 
 class SimpleScheduler(Scheduler):
-    def __init__(self, store, interval):
-        super().__init__(store, interval)
+    def __init__(self, stores):
+        super().__init__(stores)
         self.run_scheduler()
 
     def _scheduler(self, product):

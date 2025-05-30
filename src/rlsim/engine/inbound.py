@@ -1,7 +1,7 @@
 import simpy
 
-from rlsim.control import DemandOrder, Stores
-from rlsim.utils import random_number
+from rlsim.engine.control import DemandOrder, Stores
+from rlsim.engine.utils import random_number
 
 
 class Inbound:

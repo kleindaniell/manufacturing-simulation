@@ -2,7 +2,7 @@ import numpy as np
 import pandas as pd
 import simpy
 
-from rlsim.control import Stores
+from rlsim.engine.control import Stores
 
 
 class Monitor:
