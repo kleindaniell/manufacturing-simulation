@@ -15,6 +15,7 @@ class ArticleScheduler(Scheduler):
             demandOrder: DemandOrder = yield self.stores.inbound_demand_orders.get()
             product = demandOrder.product
             quantity = demandOrder.quantity
+            duedate = demandOrder.duedate
 
             cb_level = self.stores.constraint_buffer_level
 

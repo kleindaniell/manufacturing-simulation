@@ -85,6 +85,7 @@ class Outbound:
                     yield self.stores.delivered_late[product].put(quantity)
 
         while True:
+
             demandOrder: DemandOrder = yield self.stores.outbound_demand_orders[
                 product
             ].get()

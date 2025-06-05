@@ -2,6 +2,7 @@ from dataclasses import dataclass, field
 from typing import Optional
 
 import simpy
+import simpy.events
 
 
 class Stores:
@@ -59,12 +60,16 @@ class Stores:
         self.delivered_ontime = {}
         self.delivered_late = {}
         self.lost_sales = {}
+        # event
+        self.product_sold = {}
         for product in self.products:
             self.finished_goods[product] = simpy.Container(self.env)
             self.outbound_demand_orders[product] = simpy.FilterStore(self.env)
             self.delivered_ontime[product] = simpy.Container(self.env)
             self.delivered_late[product] = simpy.Container(self.env)
             self.lost_sales[product] = simpy.Container(self.env)
+            self.product_sold[product] = self.env.event()
+            self.product_sold[product].succeed()
 
 
 @dataclass
