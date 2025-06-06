@@ -46,6 +46,8 @@ class Outbound:
             elif self.stores.warmup < self.env.now:
                 self.stores.lost_sales[product].put(quantity)
 
+            yield self.stores.wip[product].get(quantity)
+
     def _delivery_as_ready(self, product):
         while True:
             demandOrder: DemandOrder = yield self.stores.outbound_demand_orders[
@@ -71,6 +73,7 @@ class Outbound:
                     )
 
             yield self.stores.lead_time[product].put(self.env.now - demandOrder.arived)
+            yield self.stores.wip[product].get(quantity)
 
     def _delivery_on_duedate(self, product):
         def _delivey_order(demandOrder: DemandOrder):
