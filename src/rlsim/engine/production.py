@@ -8,7 +8,7 @@ class Production:
     def __init__(self, stores: Stores, warmup: int = 0, order_selection_fn=None):
         self.stores: Stores = stores
         self.env: simpy.Environment = stores.env
-        self.warmup = warmup
+        self.warmup = self.stores.warmup
         self.order_selection_fn = order_selection_fn
         self._create_resources()
 
@@ -26,10 +26,11 @@ class Production:
             self.machine_down[resource] = self.env.event()
             self.machine_down[resource].succeed()
 
-            # self.wait_queue[resource] = self.env.event()
-            # self.wait_queue[resource].succeed()
+            if self.stores.resources[resource].get(
+                "tbf", None
+            ) and self.stores.resources[resource].get("ttr", None):
+                self.env.process(self._breakdowns(resource))
 
-            self.env.process(self._breakdowns(resource))
             self.env.process(self._transportation(resource))
             self.env.process(self._production_system(resource))
 
@@ -78,6 +79,9 @@ class Production:
                 productionOrder.finished = self.env.now
                 yield self.stores.resource_transport[resource].get()
                 yield self.stores.finished_goods[product].put(productionOrder.quantity)
+                yield self.stores.flow_time[product].put(
+                    self.env.now - productionOrder.released
+                )
 
             else:
                 process_id = productionOrder.process_finished
@@ -165,7 +169,7 @@ class Production:
                 yield self.stores.resource_processing[resource].get()
                 yield self.stores.resource_finished[resource].put(productionOrder)
                 yield self.stores.resource_output[resource].put(productionOrder)
-                if self.env.now > self.warmup:
+                if self.env.now >= self.warmup:
                     self.stores.resource_utilization[resource] += round(
                         end_time - start_time, 8
                     )

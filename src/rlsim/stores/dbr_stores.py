@@ -14,16 +14,18 @@ class DBR_stores(Stores):
         env: simpy.Environment,
         resources: dict,
         products: dict,
+        warmup: int = 0,
+        log_interval: int = 72,
         cb_start: int = 0,
     ):
-        super().__init__(env, resources, products)
+        super().__init__(env, resources, products, warmup, log_interval)
 
         self._create_constraint_buffer(cb_start)
         self._create_shipping_buffers()
 
         self.contraint_resource, self.utilization_df = self.define_constraint()
 
-        self.update_buffers(self.contraint_resource)
+        self.update_constraint_buffer(self.contraint_resource)
 
     def _create_constraint_buffer(self, cb_start):
         # Constraint buffers
@@ -39,7 +41,7 @@ class DBR_stores(Stores):
             self.shipping_buffer[product] = self.products[product].get(
                 "shipping_buffer", 0
             )
-            self.shipping_buffer_level[product] = simpy.Container(self.env)
+            self.shipping_buffer_level[product] = 0
 
     def define_constraint(self) -> Tuple[str, pd.DataFrame]:
 
@@ -72,24 +74,25 @@ class DBR_stores(Stores):
     def update_constraint_buffer(self, constraint):
 
         def _update_buffer():
-            productionOrder: ProductionOrder = yield self.resource_finished[
-                constraint
-            ].get()
-            product = productionOrder.product
-            actual_process = productionOrder.process_finished - 1
-            product_process = self.processes_value_list[product][actual_process]
-            product_processing_time = product_process["processing_time"]["params"][0]
-            self.constraint_buffer_level -= product_processing_time
 
-            print(
-                f"{self.env.now} - {constraint} - {product} - {product_processing_time} - {self.constraint_buffer_level}"
-            )
+            while True:
+                productionOrder: ProductionOrder = yield self.resource_finished[
+                    constraint
+                ].get()
+                product = productionOrder.product
+                actual_process = productionOrder.process_finished - 1
+                product_process = self.processes_value_list[product][actual_process]
+                product_processing_time = product_process["processing_time"]["params"][
+                    0
+                ]
+                self.constraint_buffer_level -= product_processing_time
 
         self.env.process(_update_buffer())
 
-    def update_shipping_buffers(self):
+    def calculate_shipping_buffer(self, product):
 
-        def _update_buffer(product):
-            while True:
+        self.shipping_buffer_level[product] = (
+            self.wip[product] + self.finished_goods[product]
+        )
 
-                yield self.product_sold[product]
+        return self.shipping_buffer_level

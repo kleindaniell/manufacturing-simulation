@@ -43,6 +43,6 @@ class Inbound:
                 arived=self.env.now,
             )
 
-            yield self.stores.inbound_demand_orders[product].put(demandOrder)
+            yield self.stores.inbound_demand_orders.put(demandOrder)
 
             # yield self.actual_demand[product].put(demand["quantity"])

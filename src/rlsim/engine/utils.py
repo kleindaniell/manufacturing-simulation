@@ -1,5 +1,6 @@
 import random
 import numpy as np
+from scipy.stats import gamma, erlang
 
 
 def random_number(distribution, params) -> float:
@@ -15,7 +16,7 @@ def random_number(distribution, params) -> float:
         k = params[0] ** 2 / params[1] ** 2
         theta = params[1] ** 2 / params[0]
         value = random.gammavariate(k, theta)
-    elif distribution == "earlang":
+    elif distribution == "erlang":
         k = params[0] ** 2 / params[1] ** 2
         theta = params[1] ** 2 / params[0]
         value = random.gammavariate(k, theta)

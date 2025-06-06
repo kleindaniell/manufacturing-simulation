@@ -41,9 +41,9 @@ class Outbound:
 
             if self.stores.finished_goods[product].level >= quantity:
                 yield self.stores.finished_goods[product].get(quantity)
-                if not self.training:
+                if not self.training and self.stores.warmup < self.env.now:
                     yield self.stores.delivered_ontime[product].put(quantity)
-            else:
+            elif self.stores.warmup < self.env.now:
                 self.stores.lost_sales[product].put(quantity)
 
     def _delivery_as_ready(self, product):
@@ -58,11 +58,19 @@ class Outbound:
             yield self.stores.finished_goods[product].get(quantity)
             # check ontime or late
             demandOrder.delivered = self.env.now
-            if not self.training:
+            if not self.training and self.stores.warmup < self.env.now:
                 if demandOrder.delivered <= duedate:
                     yield self.stores.delivered_ontime[product].put(quantity)
+                    yield self.stores.earliness[product].put(
+                        demandOrder.duedate - self.env.now
+                    )
                 else:
                     yield self.stores.delivered_late[product].put(quantity)
+                    yield self.stores.tardiness[product].put(
+                        self.env.now - demandOrder.duedate
+                    )
+
+            yield self.stores.lead_time[product].put(self.env.now - demandOrder.arived)
 
     def _delivery_on_duedate(self, product):
         def _delivey_order(demandOrder: DemandOrder):
@@ -78,11 +86,17 @@ class Outbound:
 
             # Check ontime or late
             demandOrder.delivered = self.env.now
-            if not self.training:
+            if not self.training and self.stores.warmup < self.env.now:
                 if demandOrder.delivered <= duedate:
                     yield self.stores.delivered_ontime[product].put(quantity)
+                    yield self.stores.earliness[product].put(duedate - self.env.now)
                 else:
                     yield self.stores.delivered_late[product].put(quantity)
+                    yield self.stores.tardiness[product].put(self.env.now - duedate)
+
+                yield self.stores.lead_time[product].put(
+                    self.env.now - demandOrder.arived
+                )
 
         while True:
 

@@ -11,14 +11,19 @@ class Stores:
         env: simpy.Environment,
         resources: dict,
         products: dict,
+        warmup: int = 0,
+        log_interval: int = 72,
     ):
         self.env = env
         self.resources = resources
         self.products = products
+        self.warmup = warmup
+        self.log_interval = log_interval
 
         self._create_process_data()
         self._create_resources_stores()
         self._create_products_stores()
+        self._register_log()
 
     def _create_process_data(self) -> None:
         self.processes_name_list = {}
@@ -60,16 +65,37 @@ class Stores:
         self.delivered_ontime = {}
         self.delivered_late = {}
         self.lost_sales = {}
-        # event
-        self.product_sold = {}
+        # kpi
+        self.wip = {}
+        self.wip_log = {}
+        self.flow_time = {}
+        self.lead_time = {}
+        self.tardiness = {}
+        self.earliness = {}
+
         for product in self.products:
             self.finished_goods[product] = simpy.Container(self.env)
             self.outbound_demand_orders[product] = simpy.FilterStore(self.env)
             self.delivered_ontime[product] = simpy.Container(self.env)
             self.delivered_late[product] = simpy.Container(self.env)
             self.lost_sales[product] = simpy.Container(self.env)
-            self.product_sold[product] = self.env.event()
-            self.product_sold[product].succeed()
+            self.wip[product] = simpy.Container(self.env)
+            self.wip_log[product] = simpy.Store(self.env)
+            self.flow_time[product] = simpy.Store(self.env)
+            self.lead_time[product] = simpy.Store(self.env)
+            self.tardiness[product] = simpy.Store(self.env)
+            self.earliness[product] = simpy.Store(self.env)
+
+    def _register_log(self):
+
+        def register_product_log(product):
+            yield self.env.timeout(self.warmup)
+            while True:
+                yield self.wip_log[product].put(self.wip[product].level)
+                yield self.env.timeout(self.log_interval)
+
+        for product in self.products.keys():
+            self.env.process(register_product_log(product))
 
 
 @dataclass
