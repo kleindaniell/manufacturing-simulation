@@ -1,4 +1,3 @@
-from dataclasses import dataclass, field
 from typing import Tuple
 import numpy as np
 import pandas as pd
@@ -44,7 +43,6 @@ class DBR_stores(Stores):
             self.shipping_buffer_level[product] = 0
 
     def define_constraint(self) -> Tuple[str, pd.DataFrame]:
-
         df = pd.DataFrame(
             data=np.zeros(
                 shape=(len(self.products), len(self.resources)), dtype=np.float32
@@ -72,9 +70,7 @@ class DBR_stores(Stores):
         return constraint_resource, utilization_df
 
     def update_constraint_buffer(self, constraint):
-
         def _update_buffer():
-
             while True:
                 productionOrder: ProductionOrder = yield self.resource_finished[
                     constraint
@@ -90,7 +86,6 @@ class DBR_stores(Stores):
         self.env.process(_update_buffer())
 
     def calculate_shipping_buffer(self, product):
-
         self.shipping_buffer_level[product] = (
             self.wip[product] + self.finished_goods[product]
         )

@@ -15,6 +15,7 @@ class ArticleScheduler(Scheduler):
         self.run_scheduler()
 
     def _scheduler(self):
+        next_schedule = self.env.now
         while True:
             demandOrder: DemandOrder = yield self.stores.inbound_demand_orders.get()
             product = demandOrder.product
@@ -32,13 +33,14 @@ class ArticleScheduler(Scheduler):
                 schedule = (
                     duedate
                     - (self.stores.shipping_buffer + ccr_processing_time)
-                    - self.stores.constraint_buffer
+                    - (
+                        self.stores.constraint_buffer
+                        - self.stores.constraint_buffer_level
+                    )
                 )
-                schedule = self.env.now if schedule < self.env.now else schedule
+
             else:
                 schedule = self.env.now
-
-            self.stores.constraint_buffer_level += ccr_processing_time
 
             productionOrder = ProductionOrder(product=product, quantity=quantity)
             productionOrder.schedule = schedule
