@@ -41,20 +41,28 @@ class Simulation:
         self.monitor_interval = monitor_interval
         self.log_interval = log_interval
         self.schedule_interval = schedule_interval
+        self.set_constraint = set_constraint
 
         self.stores = DBR_stores(
-            self.env,
-            self.resources_config,
-            self.products_config,
-            warmup,
-            log_interval,
-            30.5,
+            env=self.env,
+            resources=self.resources_config,
+            products=self.products_config,
+            warmup=self.warmup,
+            log_interval=self.log_interval,
+            cb_start=30.5,
         )
+        if self.set_constraint:
+            self.stores.contraint_resource = self.set_constraint
+
         self.monitor = Monitor(
-            self.stores, self.monitor_interval, warmup=self.warmup_monitor
+            self.stores,
+            self.monitor_interval,
+            warmup=self.warmup_monitor,
+            show_print=True,
         )
-        callback = self.order_selection_callback()
-        self.production = Production(self.stores, order_selection_fn=callback)
+        # callback = self.order_selection_callback()
+        self.production = Production(self.stores)
+
         self.scheduler = ArticleScheduler(
             self.stores, constraint_buffer_size=30.5, shipping_buffer_size=30.5
         )
@@ -85,10 +93,10 @@ if __name__ == "__main__":
     with open(products_path, "r") as file:
         products_cfg = yaml.safe_load(file)
 
-    run_until = 20001
+    run_until = 200001
     schedule_interval = 72
-    monitor_interval = 5000
-    warmup = 10000
+    monitor_interval = 50000
+    warmup = 100000
     warmup_monitor = 0
 
     sim = Simulation(

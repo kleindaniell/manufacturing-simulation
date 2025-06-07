@@ -205,7 +205,7 @@ produto03:
       processing_time:
         dist: gamma
         params:
-        - 1.68
+        - 1.400
         - 0.7
       resource: r06
     p3-04:
@@ -298,7 +298,7 @@ produto04:
       processing_time:
         dist: gamma
         params:
-        - 1.42
+        - 1.775
         - 1.025
       resource: r07
     p4-04:
@@ -520,7 +520,7 @@ produto06:
       processing_time:
         dist: gamma
         params:
-        - 1.42
+        - 1.775
         - 1.025
       resource: r07
     p6-08:
@@ -577,7 +577,7 @@ produto07:
       processing_time:
         dist: gamma
         params:
-        - 1.42
+        - 1.775
         - 1.025
       resource: r07
     p7-04:
@@ -679,7 +679,7 @@ produto08:
       processing_time:
         dist: gamma
         params:
-        - 1.42
+        - 1.775
         - 1.025
       resource: r07
     p8-05:
@@ -724,7 +724,7 @@ produto08:
       processing_time:
         dist: gamma
         params:
-        - 1.68
+        - 1.400
         - 0.7
       resource: r06
     p8-10:
@@ -826,7 +826,7 @@ produto09:
       processing_time:
         dist: gamma
         params:
-        - 1.68
+        - 1.400
         - 0.7
       resource: r06
     p9-07:
@@ -880,7 +880,7 @@ produto09:
       processing_time:
         dist: gamma
         params:
-        - 1.68
+        - 1.400
         - 0.7
       resource: r06
     p9-13:
@@ -982,7 +982,7 @@ produto10:
       processing_time:
         dist: gamma
         params:
-        - 1.68
+        - 1.400
         - 0.7
       resource: r06
     p10-05:
@@ -1018,7 +1018,7 @@ produto10:
       processing_time:
         dist: gamma
         params:
-        - 1.42
+        - 1.775
         - 1.025
       resource: r07
     p10-09:
