@@ -100,9 +100,9 @@ class Outbound:
                 yield self.stores.lead_time[product].put(
                     self.env.now - demandOrder.arived
                 )
+                yield self.stores.wip[product].get(quantity)
 
         while True:
-
             demandOrder: DemandOrder = yield self.stores.outbound_demand_orders[
                 product
             ].get()

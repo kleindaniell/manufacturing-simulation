@@ -68,6 +68,7 @@ class Stores:
         # kpi
         self.wip = {}
         self.wip_log = {}
+        self.total_wip_log = simpy.Store(self.env)
         self.flow_time = {}
         self.lead_time = {}
         self.tardiness = {}
@@ -87,15 +88,20 @@ class Stores:
             self.earliness[product] = simpy.Store(self.env)
 
     def _register_log(self):
-
-        def register_product_log(product):
+        def register_product_log():
             yield self.env.timeout(self.warmup)
             while True:
-                yield self.wip_log[product].put(self.wip[product].level)
+                total_wip = 0
+                for product in self.products.keys():
+                    product_level = self.wip[product].level
+                    yield self.wip_log[product].put(product_level)
+                    total_wip += product_level
+
+                yield self.total_wip_log.put(total_wip)
+
                 yield self.env.timeout(self.log_interval)
 
-        for product in self.products.keys():
-            self.env.process(register_product_log(product))
+        self.env.process(register_product_log())
 
 
 @dataclass

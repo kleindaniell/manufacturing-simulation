@@ -11,15 +11,16 @@ class Monitor:
         stores: Stores,
         interval: int = 72,
         warmup: int = 0,
-        print_type: str = "all",
+        show_print: bool = False,
     ):
         self.stores = stores
         self.env: simpy.Environment = stores.env
         self.interval = interval
         self.warmup = warmup
-        self.print_type = print_type
+        self.show_print = show_print
 
-        self.env.process(self.run())
+        if self.show_print:
+            self.env.process(self.run())
 
     def run(self):
         yield self.env.timeout(self.warmup)
@@ -81,7 +82,6 @@ class Monitor:
         df_data = np.zeros(shape=(len(resources_list), len(columns)))
         if self.env.now >= self.stores.warmup:
             for i, resource in enumerate(resources_list):
-
                 try:
                     df_data[i, 0] = self.stores.resource_utilization[resource] / (
                         self.env.now - self.stores.warmup
@@ -121,9 +121,7 @@ class Monitor:
         earliness = []
         wip_log = []
         if self.env.now >= self.stores.warmup:
-
             for i, product in enumerate(products_list):
-
                 if len(self.stores.flow_time[product].items) > 0:
                     df_data[i, 0] = np.array(
                         self.stores.flow_time[product].items
@@ -145,7 +143,6 @@ class Monitor:
                     ).mean()
                     earliness.extend(self.stores.earliness[product].items)
                 if len(self.stores.wip_log[product].items) > 0:
-                    print(np.array(self.stores.wip_log[product].items).mean())
                     df_data[i, 4] = np.array(self.stores.wip_log[product].items).mean()
                     wip_log.extend(self.stores.wip_log[product].items)
 
@@ -158,7 +155,7 @@ class Monitor:
             np.mean(leadtime),
             np.mean(tardiness),
             np.mean(earliness),
-            np.mean(wip_log),
+            np.mean(self.stores.total_wip_log.items),
         ]
 
         return df_products
