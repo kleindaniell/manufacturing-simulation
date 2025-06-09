@@ -30,6 +30,9 @@ class Scheduler(ABC):
             yield self.env.timeout(delay)
 
         productionOrder.released = self.env.now
+        print(
+            f"schedule: {productionOrder.schedule} - Released: {productionOrder.released} - due: {productionOrder.duedate}"
+        )
         yield self.stores.wip[product].put(productionOrder.quantity)
         # Add productionOrder to first resource input
         yield self.stores.resource_input[first_resource].put(productionOrder)

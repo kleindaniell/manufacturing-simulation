@@ -80,7 +80,7 @@ class Production:
                 yield self.stores.resource_transport[resource].get()
                 yield self.stores.finished_goods[product].put(productionOrder.quantity)
                 yield self.stores.flow_time[product].put(
-                    self.env.now - productionOrder.released
+                    self.env.now - productionOrder.schedule
                 )
 
             else:

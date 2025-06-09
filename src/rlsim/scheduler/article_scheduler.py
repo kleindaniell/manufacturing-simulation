@@ -42,6 +42,8 @@ class ArticleScheduler(Scheduler):
             else:
                 schedule = self.env.now
 
+            # print(f"")
+
             productionOrder = ProductionOrder(product=product, quantity=quantity)
             productionOrder.schedule = schedule
             productionOrder.duedate = demandOrder.duedate
