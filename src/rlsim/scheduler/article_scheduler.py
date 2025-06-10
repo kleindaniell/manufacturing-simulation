@@ -1,6 +1,6 @@
 from rlsim.engine.control import DemandOrder, ProductionOrder
 from rlsim.engine.scheduler import Scheduler
-from rlsim.stores.dbr_stores import DBR_stores
+from rlsim.stores.article_stores import DBR_stores
 
 
 class ArticleScheduler(Scheduler):
@@ -29,29 +29,56 @@ class ArticleScheduler(Scheduler):
                     if process["resource"] == self.stores.contraint_resource
                 ]
             )
+
             if ccr_processing_time > 0:
-                schedule = (
-                    duedate
-                    - (self.stores.shipping_buffer + ccr_processing_time)
-                    - (
-                        self.stores.constraint_buffer
-                        - self.stores.constraint_buffer_level
-                    )
+                # schedule = (
+                #     duedate
+                #     - (self.stores.shipping_buffer + ccr_processing_time)
+                #     - self.stores.constraint_buffer
+                # )
+
+                buffer_diff = (
+                    self.stores.constraint_buffer_level - self.stores.constraint_buffer
                 )
+                schedule = (
+                    self.env.now + buffer_diff if buffer_diff > 0 else self.env.now
+                )
+
+                # print(
+                #     f"due: {duedate}"
+                #     f" - pt: {ccr_processing_time} "
+                #     f" - cb: {self.stores.constraint_buffer_level}/{self.stores.constraint_buffer} "
+                #     f" - sb: {self.stores.shipping_buffer} "
+                #     f" - schedule: {schedule} "
+                #     f" - arived: {demandOrder.arived}"
+                # )
 
             else:
                 schedule = self.env.now
-
-            # print(f"")
 
             productionOrder = ProductionOrder(product=product, quantity=quantity)
             productionOrder.schedule = schedule
             productionOrder.duedate = demandOrder.duedate
             productionOrder.priority = 0
 
-            self.env.process(self.release_order(productionOrder))
+            self.env.process(self.process_order(productionOrder, ccr_processing_time))
 
             yield self.stores.outbound_demand_orders[product].put(demandOrder)
+
+    def process_order(
+        self, productionOrder: ProductionOrder, ccr_processing_time: float
+    ):
+
+        if (
+            productionOrder.schedule is not None
+            and productionOrder.schedule > self.env.now
+        ):
+            delay = productionOrder.schedule - self.env.now
+            yield self.env.timeout(delay)
+
+        self.stores.constraint_buffer_level += ccr_processing_time
+
+        self.env.process(self.release_order(productionOrder))
 
     def run_scheduler(self):
         self.env.process(self._scheduler())

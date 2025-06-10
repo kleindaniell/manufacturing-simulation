@@ -29,24 +29,24 @@ class Outbound:
 
         elif self.delivery_mode == "instantly":
             for product in self.products.keys():
+                print(f"start delivery: {product}")
                 self.env.process(self._delivery_instantly(product))
 
     def _delivery_instantly(self, product):
         while True:
+
             demandOrder: DemandOrder = yield self.stores.outbound_demand_orders[
                 product
             ].get()
 
             quantity = demandOrder.quantity
-
             if self.stores.finished_goods[product].level >= quantity:
                 yield self.stores.finished_goods[product].get(quantity)
                 if not self.training and self.stores.warmup < self.env.now:
                     yield self.stores.delivered_ontime[product].put(quantity)
-            elif self.stores.warmup < self.env.now:
-                self.stores.lost_sales[product].put(quantity)
 
-            yield self.stores.wip[product].get(quantity)
+            elif self.stores.warmup < self.env.now:
+                yield self.stores.lost_sales[product].put(quantity)
 
     def _delivery_as_ready(self, product):
         while True:
@@ -73,7 +73,6 @@ class Outbound:
                     )
 
             yield self.stores.lead_time[product].put(self.env.now - demandOrder.arived)
-            yield self.stores.wip[product].get(quantity)
 
     def _delivery_on_duedate(self, product):
         def _delivey_order(demandOrder: DemandOrder):
@@ -100,7 +99,6 @@ class Outbound:
                 yield self.stores.lead_time[product].put(
                     self.env.now - demandOrder.arived
                 )
-                yield self.stores.wip[product].get(quantity)
 
         while True:
             demandOrder: DemandOrder = yield self.stores.outbound_demand_orders[

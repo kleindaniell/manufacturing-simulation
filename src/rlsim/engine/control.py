@@ -76,7 +76,7 @@ class Stores:
 
         for product in self.products:
             self.finished_goods[product] = simpy.Container(self.env)
-            self.outbound_demand_orders[product] = simpy.FilterStore(self.env)
+            self.outbound_demand_orders[product] = simpy.Store(self.env)
             self.delivered_ontime[product] = simpy.Container(self.env)
             self.delivered_late[product] = simpy.Container(self.env)
             self.lost_sales[product] = simpy.Container(self.env)

@@ -22,17 +22,8 @@ class Scheduler(ABC):
         productionOrder.process_total = last_process
         productionOrder.process_finished = 0
 
-        if (
-            productionOrder.schedule is not None
-            and productionOrder.schedule > self.env.now
-        ):
-            delay = productionOrder.schedule - self.env.now
-            yield self.env.timeout(delay)
-
         productionOrder.released = self.env.now
-        print(
-            f"schedule: {productionOrder.schedule} - Released: {productionOrder.released} - due: {productionOrder.duedate}"
-        )
+
         yield self.stores.wip[product].put(productionOrder.quantity)
         # Add productionOrder to first resource input
         yield self.stores.resource_input[first_resource].put(productionOrder)

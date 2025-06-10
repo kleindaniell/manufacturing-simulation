@@ -1,4 +1,5 @@
 import simpy
+import numpy as np
 
 from rlsim.engine.control import DemandOrder, Stores
 from rlsim.engine.utils import random_number
@@ -28,9 +29,9 @@ class Inbound:
         due_params = product_config["demand"]["duedate"].get("params")
 
         while True:
-            frequency = random_number(freq_dist, freq_params)
+            frequency = np.float32(random_number(freq_dist, freq_params))
             quantity = round(random_number(quantity_dist, quantity_params), 0)
-            duedate = random_number(due_dist, due_params)
+            duedate = np.float32(random_number(due_dist, due_params))
 
             yield self.env.timeout(frequency)
 
