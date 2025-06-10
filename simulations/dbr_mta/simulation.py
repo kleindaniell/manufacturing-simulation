@@ -10,8 +10,8 @@ from rlsim.engine.inbound import Inbound
 from rlsim.engine.monitor import Monitor
 from rlsim.engine.outbound import Outbound
 from rlsim.engine.production import Production
-from rlsim.stores.article_stores import DBR_stores
-from rlsim.scheduler.article_scheduler import ArticleScheduler
+from rlsim.stores.dbr_mta_store import DBR_stores
+from rlsim.scheduler.dbr_mta_scheduler import DBR_MTA
 
 
 class Simulation:
@@ -63,12 +63,14 @@ class Simulation:
         # callback = self.order_selection_callback()
         self.production = Production(self.stores)
 
-        self.scheduler = ArticleScheduler(
-            self.stores, constraint_buffer_size=30.5, shipping_buffer_size=30.5
+        self.scheduler = DBR_MTA(
+            self.stores,
+            self.schedule_interval,
+            constraint_buffer_size=100,
         )
         self.inboud = Inbound(self.stores, self.products_config)
         self.outbound = Outbound(
-            self.stores, self.products_config, delivery_mode="asReady"
+            self.stores, self.products_config, delivery_mode="instantly"
         )
 
     def run_simulation(self):
@@ -85,18 +87,18 @@ class Simulation:
 
 
 if __name__ == "__main__":
-    resource_path = Path("simulations/article/config/resources.yaml")
+    resource_path = Path("simulations/dbr_mta/config/resources.yaml")
     with open(resource_path, "r") as file:
         resources_cfg = yaml.safe_load(file)
 
-    products_path = Path("simulations/article/config/products_original.yaml")
+    products_path = Path("simulations/dbr_mta/config/products.yaml")
     with open(products_path, "r") as file:
         products_cfg = yaml.safe_load(file)
 
-    run_until = 200001
+    run_until = 721
     schedule_interval = 72
-    monitor_interval = 50000
-    warmup = 100000
+    monitor_interval = 7200
+    warmup = 0
     warmup_monitor = 0
 
     sim = Simulation(
@@ -106,6 +108,7 @@ if __name__ == "__main__":
         schedule_interval=schedule_interval,
         monitor_interval=monitor_interval,
         warmup=warmup,
+        warmup_monitor=warmup_monitor,
     )
 
     sim.run_simulation()
