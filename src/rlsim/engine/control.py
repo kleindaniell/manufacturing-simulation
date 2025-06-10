@@ -73,6 +73,7 @@ class Stores:
         self.lead_time = {}
         self.tardiness = {}
         self.earliness = {}
+        self.sold_product = {}
 
         for product in self.products:
             self.finished_goods[product] = simpy.Container(self.env)
@@ -86,6 +87,7 @@ class Stores:
             self.lead_time[product] = simpy.Store(self.env)
             self.tardiness[product] = simpy.Store(self.env)
             self.earliness[product] = simpy.Store(self.env)
+            self.sold_product[product] = 0
 
     def _register_log(self):
         def register_product_log():

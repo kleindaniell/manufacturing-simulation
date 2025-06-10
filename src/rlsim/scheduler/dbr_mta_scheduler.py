@@ -29,20 +29,17 @@ class DBR_MTA(Scheduler):
         ].get("setup", {"params": None})
         ccr_setup_time = ccr_setup_time_params.get("params", [0])[0]
 
-        fg_last_int = {}
+        last_sold = {}
         for product in self.stores.products.keys():
-            fg_last_int[product] = self.stores.finished_goods[product].level
+            last_sold[product] = 0
 
         while True:
 
             orders: List[Tuple[ProductionOrder, float, float]] = []
             for product in self.stores.products.keys():
 
-                replenishment = (
-                    fg_last_int[product] - self.stores.finished_goods[product].level
-                )
-
-                fg_last_int[product] = self.stores.finished_goods[product].level
+                replenishment = self.stores.sold_product[product] - last_sold[product]
+                last_sold[product] = self.stores.sold_product[product]
 
                 ccr_processing_time = sum(
                     [
@@ -91,8 +88,12 @@ class DBR_MTA(Scheduler):
                     release = True
                     product = productionOrder.product
                     quantity = productionOrder.quantity
-                    ccr_time = (quantity * ccr_time) + ccr_setup_time
-                    productionOrder.schedule = self.env.now + ccr_time
+
+                    if ccr_time > 0:
+                        ccr_time = (quantity * ccr_time) + ccr_setup_time
+                        productionOrder.schedule = self.env.now + ccr_time
+                    else:
+                        productionOrder.schedule = self.env.now
 
                     if quantity > 0:
 

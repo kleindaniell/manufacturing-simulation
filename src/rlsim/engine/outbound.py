@@ -42,6 +42,7 @@ class Outbound:
             quantity = demandOrder.quantity
             if self.stores.finished_goods[product].level >= quantity:
                 yield self.stores.finished_goods[product].get(quantity)
+                self.stores.sold_product[product] += quantity
                 if not self.training and self.stores.warmup < self.env.now:
                     yield self.stores.delivered_ontime[product].put(quantity)
 
