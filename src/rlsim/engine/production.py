@@ -101,7 +101,8 @@ class Production:
             yield self.machine_down[resource]
 
             # Get order from queue
-            if self.order_selection_fn is not None:
+            queue_len = len(self.stores.resource_input[resource].items)
+            if self.order_selection_fn is not None and queue_len > 1:
                 productionOrderId = self.order_selection_fn(self.stores, resource)
                 productionOrder: ProductionOrder = yield self.stores.resource_input[
                     resource

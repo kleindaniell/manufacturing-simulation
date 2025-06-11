@@ -35,12 +35,16 @@ class DBR_stores(Stores):
         # Shipping_buffer
         self.shipping_buffer = {}
         self.shipping_buffer_level = {}
+        self.production_orders = {}
 
         for product in self.products.keys():
             self.shipping_buffer[product] = self.products[product].get(
                 "shipping_buffer", 0
             )
+
             self.shipping_buffer_level[product] = self.shipping_buffer[product]
+            self.production_orders[product] = []
+
             self.finished_goods[product].put(self.shipping_buffer[product])
 
     def define_constraint(self) -> Tuple[str, pd.DataFrame]:
@@ -71,7 +75,6 @@ class DBR_stores(Stores):
         return constraint_resource, utilization_df
 
     def update_constraint_buffer(self, constraint):
-
         setup_config = self.resources[constraint].get("setup", {"params": None})
         setup_time = setup_config.get("params", [0])[0]
 

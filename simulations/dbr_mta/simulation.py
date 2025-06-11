@@ -4,6 +4,7 @@ from typing import List
 
 import simpy
 import yaml
+import numpy as np
 
 from rlsim.engine.control import ProductionOrder
 from rlsim.engine.inbound import Inbound
@@ -61,7 +62,7 @@ class Simulation:
             show_print=True,
         )
         callback = self.order_selection_callback()
-        self.production = Production(self.stores)  # , order_selection_fn=callback)
+        self.production = Production(self.stores, order_selection_fn=callback)
 
         self.scheduler = DBR_MTA(
             self.stores,
@@ -80,8 +81,33 @@ class Simulation:
     def order_selection_callback(self):
         def order_selection(store: DBR_stores, resource):
             orders: List[ProductionOrder] = store.resource_input[resource].items
+            # print(f"\n {self.env.now}")
+            # print(f"{resource}")
+            for id, productionOrder in enumerate(orders):
+                ahead_orders: List[ProductionOrder] = []
+                for resource_ in self.stores.resources.keys():
+                    ahead_orders.extend(self.stores.resource_input[resource_].items)
+                    ahead_orders.extend(self.stores.resource_output[resource_].items)
+                    ahead_orders.extend(self.stores.resource_transport[resource_].items)
+                    ahead_orders.extend(
+                        self.stores.resource_processing[resource_].items
+                    )
 
-            order = sorted(orders, key=lambda x: x.duedate)[0]
+                product = productionOrder.product
+                released = productionOrder.released
+                ahead_quantity = [
+                    order.quantity
+                    for order in ahead_orders
+                    if order.released < released and order.product == product
+                ]
+                orders[id].priority = (
+                    sum(ahead_quantity) / self.stores.shipping_buffer[product]
+                )
+
+                # print(f"{productionOrder.product}: {productionOrder.priority}")
+
+            order = sorted(orders, key=lambda x: x.priority)[0]
+            # print(f"SELECTED: {order.product}: {order.priority}")
             return order.id
 
         return order_selection

@@ -48,7 +48,6 @@ class DBR_MTA(Scheduler):
                 )
 
                 replenishment, penetration = self.calculate_replenishment(product)
-                print(f"{product} - {ccr_processing_time} - {replenishment}")
                 orders.append(
                     (
                         # Production order
@@ -70,16 +69,16 @@ class DBR_MTA(Scheduler):
             orders = list(sorted(orders, key=lambda x: x[-1], reverse=True))
             # Release orders based on priority
 
-            print(f"\n {self.env.now} \n")
-            print(f"{self.stores.contraint_resource}")
-            print(f"{self.stores.constraint_buffer}")
-            print(f"{self.stores.constraint_buffer_level}")
+            # print(f"\n {self.env.now} \n")
+            # print(f"{self.stores.contraint_resource}")
+            # print(f"{self.stores.constraint_buffer}")
+            # print(f"{self.stores.constraint_buffer_level}")
             if self.stores.constraint_buffer_level < self.stores.constraint_buffer:
                 ccr_safe_load = (
                     self.stores.constraint_buffer - self.stores.constraint_buffer_level
                 )
 
-                print(f"safe load: {ccr_safe_load}")
+                # print(f"safe load: {ccr_safe_load}")
 
                 for productionOrder, ccr_time, _ in orders:
                     product = productionOrder.product
@@ -98,7 +97,7 @@ class DBR_MTA(Scheduler):
                     if quantity > 0 and release:
                         self.env.process(self.process_order(productionOrder, ccr_time))
                         ccr_safe_load -= ccr_time
-                        print(f"safe load updated: {ccr_safe_load}")
+                        # print(f"safe load updated: {ccr_safe_load}")
 
             yield self.env.timeout(interval)
 
@@ -111,7 +110,7 @@ class DBR_MTA(Scheduler):
             yield self.env.timeout(delay)
 
         self.stores.constraint_buffer_level += ccr_add
-
+        self.stores.production_orders[productionOrder.product] = productionOrder
         self.env.process(self.release_order(productionOrder))
 
     def calculate_replenishment(self, product):
