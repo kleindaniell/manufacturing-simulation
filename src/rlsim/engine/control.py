@@ -1,8 +1,8 @@
 from dataclasses import dataclass, field
-from typing import Optional, Dict, List
+from typing import Optional, Dict, List, Tuple
 
 import simpy
-import simpy.events
+import pandas as pd
 
 
 class Stores:
@@ -13,19 +13,27 @@ class Stores:
         products: dict,
         warmup: int = 0,
         log_interval: int = 72,
+        training: bool = False,
     ):
         self.env = env
         self.resources = resources
         self.products = products
         self.warmup = warmup
         self.log_interval = log_interval
+        self.training = training
 
         self._create_process_data()
         self._create_resources_stores()
-        self._create_resources_logs()
         self._create_products_stores()
-        self._create_product_logs()
-        self._register_log()
+
+        self.metrics_perf = GeneralMetrics(self.products.keys())
+        self.metrics_prod = ProductMetrics(self.products.keys())
+        self.metrics_res = ResourceMetrics(self.resources.keys())
+
+        self.total_wip_log: List[Tuple[float, float]] = []
+
+        if not training:
+            self._register_log()
 
     def _create_process_data(self) -> None:
         self.processes_name_list = {}
@@ -38,11 +46,11 @@ class Stores:
             self.processes_value_list[product] = list(processes.values())
 
     def _create_resources_stores(self) -> None:
-        self.resource_output = {}
-        self.resource_input = {}
-        self.resource_processing = {}
-        self.resource_finished = {}
-        self.resource_transport = {}
+        self.resource_output: Dict[str, simpy.FilterStore] = {}
+        self.resource_input: Dict[str, simpy.FilterStore] = {}
+        self.resource_processing: Dict[str, simpy.Store] = {}
+        self.resource_finished: Dict[str, simpy.Store] = {}
+        self.resource_transport: Dict[str, simpy.Store] = {}
 
         for resource in self.resources:
             self.resource_output[resource] = simpy.FilterStore(self.env)
@@ -82,12 +90,13 @@ class Stores:
         self.delivered_late: Dict[int] = {}
         self.lost_sales: Dict[int] = {}
 
-        self.flow_time: Dict[str, List[int]] = {}
-        self.lead_time: Dict[str, List[int]] = {}
-        self.tardiness: Dict[str, List[int]] = {}
-        self.earliness: Dict[str, List[int]] = {}
-        self.wip_log: Dict[str, List[int]] = {}
-        self.total_wip_log: List = []
+        self.flow_time: Dict[str, List[Tuple[float, float]]] = {}
+        self.lead_time: Dict[str, List[Tuple[float, float]]] = {}
+        self.tardiness: Dict[str, List[Tuple[float, float]]] = {}
+        self.earliness: Dict[str, List[Tuple[float, float]]] = {}
+        self.fg_log: Dict[str, List[Tuple[float, float]]] = {}
+        self.wip_log: Dict[str, List[Tuple[float, float]]] = {}
+        self.total_wip_log: List[Tuple[float, float]] = []
 
         for product in self.products:
 
@@ -99,22 +108,80 @@ class Stores:
             self.tardiness[product] = []
             self.earliness[product] = []
             self.wip_log[product] = []
+            self.fg_log[product] = []
 
-    def _register_log(self):
+    def _register_log(self) -> None:
         def register_product_log():
             yield self.env.timeout(self.warmup)
             while True:
                 total_wip = 0
                 for product in self.products.keys():
+
+                    self.metrics_prod.fg_log[product].append(
+                        (self.env.now, self.finished_goods[product].level)
+                    )
+
                     wip = self.wip[product].level
-                    self.wip_log[product].append(wip)
+                    self.metrics_prod.wip_log[product].append((self.env.now, wip))
                     total_wip += wip
 
-                self.total_wip_log.append(total_wip)
+                self.total_wip_log.append((self.env.now, total_wip))
 
                 yield self.env.timeout(self.log_interval)
 
         self.env.process(register_product_log())
+
+
+@dataclass
+class GeneralMetrics:
+    products: List[str]
+    delivered_ontime: Dict[str, int] = field(default_factory=dict)
+    delivered_late: Dict[str, int] = field(default_factory=dict)
+    lost_sales: Dict[str, int] = field(default_factory=dict)
+
+    def __post_init__(self):
+        for product in self.products:
+            self.delivered_ontime[product] = 0
+            self.delivered_late[product] = 0
+            self.lost_sales[product] = 0
+
+
+@dataclass
+class ProductMetrics:
+    products: List[str]
+    flow_time: Dict[str, List[Tuple[float, float]]] = field(default_factory=dict)
+    lead_time: Dict[str, List[Tuple[float, float]]] = field(default_factory=dict)
+    tardiness: Dict[str, List[Tuple[float, float]]] = field(default_factory=dict)
+    earliness: Dict[str, List[Tuple[float, float]]] = field(default_factory=dict)
+    wip_log: Dict[str, List[Tuple[float, float]]] = field(default_factory=dict)
+    fg_log: Dict[str, List[Tuple[float, float]]] = field(default_factory=dict)
+
+    def __post_init__(self):
+        for product in self.products:
+            self.flow_time[product] = []
+            self.lead_time[product] = []
+            self.tardiness[product] = []
+            self.earliness[product] = []
+            self.wip_log[product] = []
+            self.fg_log[product] = []
+
+
+@dataclass
+class ResourceMetrics:
+    resources: List[str]
+    resource_utilization: Dict[str, List[Tuple[float, float]]] = field(
+        default_factory=dict
+    )
+    resource_breakdowns: Dict[str, List[Tuple[float, float]]] = field(
+        default_factory=dict
+    )
+    resource_setup: Dict[str, List[Tuple[float, float]]] = field(default_factory=dict)
+
+    def __post_init__(self):
+        for resource in self.resources:
+            self.resource_utilization[resource] = []
+            self.resource_breakdowns[resource] = []
+            self.resource_setup[resource] = []
 
 
 @dataclass
