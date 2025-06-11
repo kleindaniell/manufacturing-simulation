@@ -79,7 +79,8 @@ class Production:
                 productionOrder.finished = self.env.now
                 yield self.stores.resource_transport[resource].get()
                 yield self.stores.finished_goods[product].put(productionOrder.quantity)
-                yield self.stores.flow_time[product].put(
+
+                self.stores.flow_time[product].append(
                     self.env.now - productionOrder.released
                 )
                 yield self.stores.wip[product].get(productionOrder.quantity)
@@ -151,7 +152,7 @@ class Production:
 
                 start_time = self.env.now
 
-                for part in range(order_quantity):
+                for part in range(int(order_quantity)):
                     processing_time = random_number(
                         process_time_dist, process_time_params
                     )

@@ -61,11 +61,9 @@ class Monitor:
         df_print["late"] = 0
         for product in products_list:
             df_print.loc[product, "fg"] = self.stores.finished_goods[product].level
-            df_print.loc[product, "onTime"] = self.stores.delivered_ontime[
-                product
-            ].level
-            df_print.loc[product, "late"] = self.stores.delivered_late[product].level
-            df_print.loc[product, "lost"] = self.stores.lost_sales[product].level
+            df_print.loc[product, "onTime"] = self.stores.delivered_ontime[product]
+            df_print.loc[product, "late"] = self.stores.delivered_late[product]
+            df_print.loc[product, "lost"] = self.stores.lost_sales[product]
         df_print.loc["total", :] = df_print.sum(axis=0)
         return df_print
 
@@ -122,29 +120,21 @@ class Monitor:
         wip_log = []
         if self.env.now >= self.stores.warmup:
             for i, product in enumerate(products_list):
-                if len(self.stores.flow_time[product].items) > 0:
-                    df_data[i, 0] = np.array(
-                        self.stores.flow_time[product].items
-                    ).mean()
-                    flowtime.extend(self.stores.flow_time[product].items)
-                if len(self.stores.lead_time[product].items) > 0:
-                    df_data[i, 1] = np.array(
-                        self.stores.lead_time[product].items
-                    ).mean()
-                    leadtime.extend(self.stores.lead_time[product].items)
-                if len(self.stores.tardiness[product].items) > 0:
-                    df_data[i, 2] = np.array(
-                        self.stores.tardiness[product].items
-                    ).mean()
-                    tardiness.extend(self.stores.tardiness[product].items)
-                if len(self.stores.earliness[product].items) > 0:
-                    df_data[i, 3] = np.array(
-                        self.stores.earliness[product].items
-                    ).mean()
-                    earliness.extend(self.stores.earliness[product].items)
-                if len(self.stores.wip_log[product].items) > 0:
-                    df_data[i, 4] = np.array(self.stores.wip_log[product].items).mean()
-                    wip_log.extend(self.stores.wip_log[product].items)
+                if len(self.stores.flow_time[product]) > 0:
+                    df_data[i, 0] = np.array(self.stores.flow_time[product]).mean()
+                    flowtime.extend(self.stores.flow_time[product])
+                if len(self.stores.lead_time[product]) > 0:
+                    df_data[i, 1] = np.array(self.stores.lead_time[product]).mean()
+                    leadtime.extend(self.stores.lead_time[product])
+                if len(self.stores.tardiness[product]) > 0:
+                    df_data[i, 2] = np.array(self.stores.tardiness[product]).mean()
+                    tardiness.extend(self.stores.tardiness[product])
+                if len(self.stores.earliness[product]) > 0:
+                    df_data[i, 3] = np.array(self.stores.earliness[product]).mean()
+                    earliness.extend(self.stores.earliness[product])
+                if len(self.stores.wip_log[product]) > 0:
+                    df_data[i, 4] = np.array(self.stores.wip_log[product]).mean()
+                    wip_log.extend(self.stores.wip_log[product])
 
         df_data = df_data.round(3)
 
@@ -155,7 +145,7 @@ class Monitor:
             np.mean(leadtime),
             np.mean(tardiness),
             np.mean(earliness),
-            np.mean(self.stores.total_wip_log.items),
+            np.mean(self.stores.total_wip_log),
         ]
 
         return df_products

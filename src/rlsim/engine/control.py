@@ -1,5 +1,5 @@
 from dataclasses import dataclass, field
-from typing import Optional
+from typing import Optional, Dict, List
 
 import simpy
 import simpy.events
@@ -22,7 +22,9 @@ class Stores:
 
         self._create_process_data()
         self._create_resources_stores()
+        self._create_resources_logs()
         self._create_products_stores()
+        self._create_product_logs()
         self._register_log()
 
     def _create_process_data(self) -> None:
@@ -41,9 +43,6 @@ class Stores:
         self.resource_processing = {}
         self.resource_finished = {}
         self.resource_transport = {}
-        self.resource_utilization = {}
-        self.resource_breakdowns = {}
-        self.resource_setup = {}
 
         for resource in self.resources:
             self.resource_output[resource] = simpy.FilterStore(self.env)
@@ -51,43 +50,55 @@ class Stores:
             self.resource_processing[resource] = simpy.Store(self.env)
             self.resource_transport[resource] = simpy.Store(self.env)
             self.resource_finished[resource] = simpy.Store(self.env)
+
+    def _create_resources_logs(self) -> None:
+        self.resource_utilization = {}
+        self.resource_breakdowns = {}
+        self.resource_setup = {}
+
+        for resource in self.resources:
             self.resource_utilization[resource] = 0
             self.resource_breakdowns[resource] = []
             self.resource_setup[resource] = []
 
     def _create_products_stores(self) -> None:
+
         # Outbound Stores
-        self.finished_goods = {}
+        self.finished_goods: Dict[str, simpy.Container] = {}
+
         # Demand Orders stores
         self.inbound_demand_orders = simpy.FilterStore(self.env)
-        self.outbound_demand_orders = {}
-        # KPIs
-        self.delivered_ontime = {}
-        self.delivered_late = {}
-        self.lost_sales = {}
-        # kpi
-        self.wip = {}
-        self.wip_log = {}
-        self.total_wip_log = simpy.Store(self.env)
-        self.flow_time = {}
-        self.lead_time = {}
-        self.tardiness = {}
-        self.earliness = {}
-        self.sold_product = {}
+        self.outbound_demand_orders: Dict[str, simpy.Store] = {}
+        self.wip: Dict[str, simpy.Container] = {}
 
         for product in self.products:
             self.finished_goods[product] = simpy.Container(self.env)
             self.outbound_demand_orders[product] = simpy.Store(self.env)
-            self.delivered_ontime[product] = simpy.Container(self.env)
-            self.delivered_late[product] = simpy.Container(self.env)
-            self.lost_sales[product] = simpy.Container(self.env)
             self.wip[product] = simpy.Container(self.env)
-            self.wip_log[product] = simpy.Store(self.env)
-            self.flow_time[product] = simpy.Store(self.env)
-            self.lead_time[product] = simpy.Store(self.env)
-            self.tardiness[product] = simpy.Store(self.env)
-            self.earliness[product] = simpy.Store(self.env)
-            self.sold_product[product] = 0
+
+    def _create_product_logs(self) -> None:
+
+        self.delivered_ontime: Dict[int] = {}
+        self.delivered_late: Dict[int] = {}
+        self.lost_sales: Dict[int] = {}
+
+        self.flow_time: Dict[str, List[int]] = {}
+        self.lead_time: Dict[str, List[int]] = {}
+        self.tardiness: Dict[str, List[int]] = {}
+        self.earliness: Dict[str, List[int]] = {}
+        self.wip_log: Dict[str, List[int]] = {}
+        self.total_wip_log: List = []
+
+        for product in self.products:
+
+            self.delivered_ontime[product] = 0
+            self.delivered_late[product] = 0
+            self.lost_sales[product] = 0
+            self.flow_time[product] = []
+            self.lead_time[product] = []
+            self.tardiness[product] = []
+            self.earliness[product] = []
+            self.wip_log[product] = []
 
     def _register_log(self):
         def register_product_log():
@@ -95,11 +106,11 @@ class Stores:
             while True:
                 total_wip = 0
                 for product in self.products.keys():
-                    product_level = self.wip[product].level
-                    yield self.wip_log[product].put(product_level)
-                    total_wip += product_level
+                    wip = self.wip[product].level
+                    self.wip_log[product].append(wip)
+                    total_wip += wip
 
-                yield self.total_wip_log.put(total_wip)
+                self.total_wip_log.append(total_wip)
 
                 yield self.env.timeout(self.log_interval)
 

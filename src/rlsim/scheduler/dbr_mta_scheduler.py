@@ -29,15 +29,9 @@ class DBR_MTA(Scheduler):
         ].get("setup", {"params": None})
         ccr_setup_time = ccr_setup_time_params.get("params", [0])[0]
 
-        last_sold = {}
-        for product in self.stores.products.keys():
-            last_sold[product] = 0
-
         while True:
             orders: List[Tuple[ProductionOrder, float, float]] = []
             for product in self.stores.products.keys():
-                # replenishment = self.stores.sold_product[product] - last_sold[product]
-                last_sold[product] = self.stores.sold_product[product]
 
                 ccr_processing_time = sum(
                     [

@@ -15,12 +15,10 @@ class ArticleScheduler(Scheduler):
         self.run_scheduler()
 
     def _scheduler(self):
-        next_schedule = self.env.now
         while True:
             demandOrder: DemandOrder = yield self.stores.inbound_demand_orders.get()
             product = demandOrder.product
             quantity = demandOrder.quantity
-            duedate = demandOrder.duedate
 
             ccr_processing_time = sum(
                 [
@@ -43,15 +41,6 @@ class ArticleScheduler(Scheduler):
                 schedule = (
                     self.env.now + buffer_diff if buffer_diff > 0 else self.env.now
                 )
-
-                # print(
-                #     f"due: {duedate}"
-                #     f" - pt: {ccr_processing_time} "
-                #     f" - cb: {self.stores.constraint_buffer_level}/{self.stores.constraint_buffer} "
-                #     f" - sb: {self.stores.shipping_buffer} "
-                #     f" - schedule: {schedule} "
-                #     f" - arived: {demandOrder.arived}"
-                # )
 
             else:
                 schedule = self.env.now

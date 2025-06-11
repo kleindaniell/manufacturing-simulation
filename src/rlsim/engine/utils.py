@@ -27,4 +27,4 @@ def random_number(distribution, params) -> float:
     else:
         value = 0
 
-    return value
+    return np.float32(value)
