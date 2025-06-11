@@ -1,6 +1,9 @@
 import numpy as np
 import pandas as pd
+from time import time
+
 import simpy
+
 
 from rlsim.engine.control import Stores
 
@@ -23,18 +26,26 @@ class Monitor:
             self.env.process(self.run())
 
     def run(self):
+        start_time = time()
         yield self.env.timeout(self.warmup)
         while True:
+
             df_status = self.measure_status()
             df_resource = self.measure_resources()
             df_product = self.measure_products()
 
+            end_time = time()
+            elapsed_time = end_time - start_time
+            print(f"Monitor Elapsed time: {elapsed_time:.4f} seconds")
+            start_time = time()
             print(f"Status - Now: {self.env.now}")
+
             print(df_status)
             print("Resources")
             print(df_resource)
             print("Product")
             print(df_product)
+
             yield self.env.timeout(self.interval)
 
     def measure_status(self) -> tuple[pd.DataFrame, pd.DataFrame]:

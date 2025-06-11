@@ -1,10 +1,12 @@
 import random
 from pathlib import Path
 from typing import List
+from time import time
 
 import simpy
 import yaml
 import numpy as np
+import pandas as pd
 
 from rlsim.engine.control import ProductionOrder
 from rlsim.engine.inbound import Inbound
@@ -128,6 +130,8 @@ if __name__ == "__main__":
     warmup = 100000
     warmup_monitor = 0
 
+    start_time = time()
+
     sim = Simulation(
         run_until=run_until,
         resources_cfg=resources_cfg,
@@ -139,3 +143,7 @@ if __name__ == "__main__":
     )
 
     sim.run_simulation()
+
+    end_time = time()
+    elapsed_time = end_time - start_time
+    print(f"Elapsed time: {elapsed_time:.4f} seconds")
