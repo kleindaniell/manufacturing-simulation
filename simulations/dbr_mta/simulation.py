@@ -49,7 +49,7 @@ class Simulation:
             products=self.products_config,
             warmup=self.warmup,
             log_interval=self.log_interval,
-            cb_start=30.5,
+            # cb_start=30.5,
         )
         if self.set_constraint:
             self.stores.contraint_resource = self.set_constraint
@@ -60,13 +60,13 @@ class Simulation:
             warmup=self.warmup_monitor,
             show_print=True,
         )
-        # callback = self.order_selection_callback()
-        self.production = Production(self.stores)
+        callback = self.order_selection_callback()
+        self.production = Production(self.stores)  # , order_selection_fn=callback)
 
         self.scheduler = DBR_MTA(
             self.stores,
             self.schedule_interval,
-            constraint_buffer_size=100,
+            constraint_buffer_size=2000,
         )
         self.inboud = Inbound(self.stores, self.products_config)
         self.outbound = Outbound(
@@ -80,6 +80,7 @@ class Simulation:
     def order_selection_callback(self):
         def order_selection(store: DBR_stores, resource):
             orders: List[ProductionOrder] = store.resource_input[resource].items
+
             order = sorted(orders, key=lambda x: x.duedate)[0]
             return order.id
 
@@ -95,10 +96,10 @@ if __name__ == "__main__":
     with open(products_path, "r") as file:
         products_cfg = yaml.safe_load(file)
 
-    run_until = 721
+    run_until = 200001
     schedule_interval = 72
-    monitor_interval = 7200
-    warmup = 0
+    monitor_interval = 50000
+    warmup = 100000
     warmup_monitor = 0
 
     sim = Simulation(

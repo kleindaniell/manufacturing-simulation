@@ -11,9 +11,10 @@ r01:
       - 4
       - 2
   setup:
-    dist: constant
+    dist: gamma
     params:
-      - 0
+      - 0.2
+      - 0.1
 r02:
   quantity: 1
   tbf:
@@ -27,9 +28,10 @@ r02:
       - 4
       - 2
   setup:
-    dist: constant
+    dist: gamma
     params:
-      - 0
+      - 0.2
+      - 0.1
 r03:
   quantity: 1
   tbf:
@@ -111,9 +113,10 @@ r07:
       - 4
       - 2
   setup:
-    dist: constant
+    dist: gamma
     params:
-      - 0
+      - 0.2
+      - 0.1
 r08:
   quantity: 1
   tbf:
@@ -146,7 +149,7 @@ r09:
   setup:
     dist: gamma
     params:
-      - 0.5
+      - 0.2
       - 0.1
 r10:
   quantity: 1
@@ -195,9 +198,10 @@ r12:
       - 4
       - 2
   setup:
-    dist: constant
+    dist: gamma
     params:
-      - 0
+      - 0.2
+      - 0.1
 r13:
   quantity: 1
   tbf:
@@ -211,6 +215,7 @@ r13:
       - 4
       - 2
   setup:
-    dist: constant
+    dist: gamma
     params:
-      - 0
+      - 0.2
+      - 0.1

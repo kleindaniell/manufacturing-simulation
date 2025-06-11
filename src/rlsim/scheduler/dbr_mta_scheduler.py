@@ -34,11 +34,9 @@ class DBR_MTA(Scheduler):
             last_sold[product] = 0
 
         while True:
-
             orders: List[Tuple[ProductionOrder, float, float]] = []
             for product in self.stores.products.keys():
-
-                replenishment = self.stores.sold_product[product] - last_sold[product]
+                # replenishment = self.stores.sold_product[product] - last_sold[product]
                 last_sold[product] = self.stores.sold_product[product]
 
                 ccr_processing_time = sum(
@@ -49,7 +47,7 @@ class DBR_MTA(Scheduler):
                     ]
                 )
 
-                penetration = self.calculate_penetration(product)
+                replenishment, penetration = self.calculate_replenishment(product)
                 print(f"{product} - {ccr_processing_time} - {replenishment}")
                 orders.append(
                     (
@@ -76,7 +74,6 @@ class DBR_MTA(Scheduler):
             print(f"{self.stores.contraint_resource}")
             print(f"{self.stores.constraint_buffer}")
             print(f"{self.stores.constraint_buffer_level}")
-            print(orders)
             if self.stores.constraint_buffer_level < self.stores.constraint_buffer:
                 ccr_safe_load = (
                     self.stores.constraint_buffer - self.stores.constraint_buffer_level
@@ -85,28 +82,27 @@ class DBR_MTA(Scheduler):
                 print(f"safe load: {ccr_safe_load}")
 
                 for productionOrder, ccr_time, _ in orders:
-                    release = True
                     product = productionOrder.product
                     quantity = productionOrder.quantity
-
+                    release = False
                     if ccr_time > 0:
-                        ccr_time = (quantity * ccr_time) + ccr_setup_time
-                        productionOrder.schedule = self.env.now + ccr_time
+                        if ccr_safe_load > 0:
+                            ccr_time = (quantity * ccr_time) + ccr_setup_time
+                            productionOrder.schedule = self.env.now + ccr_time
+                            release = True
                     else:
+                        ccr_time = 0
                         productionOrder.schedule = self.env.now
+                        release = True
 
-                    if quantity > 0:
-
+                    if quantity > 0 and release:
                         self.env.process(self.process_order(productionOrder, ccr_time))
                         ccr_safe_load -= ccr_time
                         print(f"safe load updated: {ccr_safe_load}")
-                    if ccr_safe_load <= 0:
-                        break
 
             yield self.env.timeout(interval)
 
     def process_order(self, productionOrder: ProductionOrder, ccr_add: float):
-
         if (
             productionOrder.schedule is not None
             and productionOrder.schedule > self.env.now
@@ -118,17 +114,18 @@ class DBR_MTA(Scheduler):
 
         self.env.process(self.release_order(productionOrder))
 
-    def calculate_penetration(self, product):
-
+    def calculate_replenishment(self, product):
         finished_goods = self.stores.finished_goods[product].level
         target_level = self.stores.shipping_buffer[product]
 
         penetration = target_level - finished_goods
+        replenishment = max(
+            target_level - self.stores.calculate_shipping_buffer(product), 0
+        )
 
-        return penetration
+        return replenishment, penetration
 
     def _process_demandOders(self):
-
         while True:
             demandOrder: DemandOrder = yield self.stores.inbound_demand_orders.get()
             product = demandOrder.product
