@@ -101,8 +101,8 @@ class Simulation:
                     if order.released < released and order.product == product
                 ]
                 orders[id].priority = (
-                    sum(ahead_quantity) / self.stores.shipping_buffer[product]
-                )
+                    sum(ahead_quantity) + self.stores.finished_goods[product].level
+                ) / self.stores.shipping_buffer[product]
 
                 # print(f"{productionOrder.product}: {productionOrder.priority}")
 
