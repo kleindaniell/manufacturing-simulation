@@ -59,16 +59,6 @@ class Stores:
             self.resource_transport[resource] = simpy.Store(self.env)
             self.resource_finished[resource] = simpy.Store(self.env)
 
-    def _create_resources_logs(self) -> None:
-        self.resource_utilization = {}
-        self.resource_breakdowns = {}
-        self.resource_setup = {}
-
-        for resource in self.resources:
-            self.resource_utilization[resource] = 0
-            self.resource_breakdowns[resource] = []
-            self.resource_setup[resource] = []
-
     def _create_products_stores(self) -> None:
 
         # Outbound Stores
@@ -83,32 +73,6 @@ class Stores:
             self.finished_goods[product] = simpy.Container(self.env)
             self.outbound_demand_orders[product] = simpy.Store(self.env)
             self.wip[product] = simpy.Container(self.env)
-
-    def _create_product_logs(self) -> None:
-
-        self.delivered_ontime: Dict[int] = {}
-        self.delivered_late: Dict[int] = {}
-        self.lost_sales: Dict[int] = {}
-
-        self.flow_time: Dict[str, List[Tuple[float, float]]] = {}
-        self.lead_time: Dict[str, List[Tuple[float, float]]] = {}
-        self.tardiness: Dict[str, List[Tuple[float, float]]] = {}
-        self.earliness: Dict[str, List[Tuple[float, float]]] = {}
-        self.fg_log: Dict[str, List[Tuple[float, float]]] = {}
-        self.wip_log: Dict[str, List[Tuple[float, float]]] = {}
-        self.total_wip_log: List[Tuple[float, float]] = []
-
-        for product in self.products:
-
-            self.delivered_ontime[product] = 0
-            self.delivered_late[product] = 0
-            self.lost_sales[product] = 0
-            self.flow_time[product] = []
-            self.lead_time[product] = []
-            self.tardiness[product] = []
-            self.earliness[product] = []
-            self.wip_log[product] = []
-            self.fg_log[product] = []
 
     def _register_log(self) -> None:
         def register_product_log():

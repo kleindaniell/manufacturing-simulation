@@ -52,7 +52,6 @@ class Simulation:
             products=self.products_config,
             warmup=self.warmup,
             log_interval=self.log_interval,
-            # cb_start=30.5,
         )
         if self.set_constraint:
             self.stores.contraint_resource = self.set_constraint
@@ -77,7 +76,7 @@ class Simulation:
         )
 
     def run_simulation(self):
-        print(self.run_until)
+
         self.env.run(until=self.run_until)
 
     def order_selection_callback(self):
@@ -124,10 +123,10 @@ if __name__ == "__main__":
     with open(products_path, "r") as file:
         products_cfg = yaml.safe_load(file)
 
-    run_until = 200001
-    schedule_interval = 72
+    run_until = 400001
+    schedule_interval = 48
     monitor_interval = 50000
-    warmup = 100000
+    warmup = 200000
     warmup_monitor = 0
 
     start_time = time()
