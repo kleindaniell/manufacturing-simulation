@@ -67,17 +67,8 @@ class Monitor:
 
         df_print["wip_total"] = df_print.sum(axis=1)
         df_print["fg"] = 0
-        df_print["onTime"] = 0
-        df_print["late"] = 0
         for product in products_list:
             df_print.loc[product, "fg"] = self.stores.finished_goods[product].level
-            df_print.loc[product, "onTime"] = self.stores.metrics_perf.delivered_ontime[
-                product
-            ]
-            df_print.loc[product, "late"] = self.stores.metrics_perf.delivered_late[
-                product
-            ]
-            df_print.loc[product, "lost"] = self.stores.metrics_perf.lost_sales[product]
         df_print.loc["total", :] = df_print.sum(axis=0)
         return df_print
 
@@ -94,27 +85,27 @@ class Monitor:
         df_data = np.zeros(shape=(len(resources_list), len(columns)))
         if self.env.now >= self.stores.warmup:
             for i, resource in enumerate(resources_list):
-                if len(self.stores.metrics_res.resource_utilization[resource]) > 0:
+                if len(self.stores.log_resources.resource_utilization[resource]) > 0:
                     try:
                         df_data[i, 0] = np.array(
-                            self.stores.metrics_res.resource_utilization[resource],
+                            self.stores.log_resources.resource_utilization[resource],
                             dtype=np.float32,
                         )[:, 1].sum() / (self.env.now - self.stores.warmup)
                     except ZeroDivisionError:
                         df_data[i, 0] = 0
 
                 df_data[i, 1] = len(
-                    self.stores.metrics_res.resource_breakdowns[resource]
+                    self.stores.log_resources.resource_breakdowns[resource]
                 )
                 if df_data[i, 1] > 0:
                     df_data[i, 2] = np.array(
-                        self.stores.metrics_res.resource_breakdowns[resource]
+                        self.stores.log_resources.resource_breakdowns[resource]
                     )[:, 1].mean()
 
-                df_data[i, 3] = len(self.stores.metrics_res.resource_setup[resource])
+                df_data[i, 3] = len(self.stores.log_resources.resource_setup[resource])
                 if df_data[i, 3] > 0:
                     df_data[i, 4] = np.array(
-                        self.stores.metrics_res.resource_setup[resource]
+                        self.stores.log_resources.resource_setup[resource]
                     )[:, 1].mean()
 
         df_data = df_data.round(3)
@@ -125,54 +116,104 @@ class Monitor:
 
     def measure_products(self):
         products_list = self.stores.products.keys()
-        columns = ["flow_time", "lead_time", "tardiness", "earliness", "wip", "fg"]
+        columns = [
+            "delivered_ontime",
+            "delivered_late",
+            "lost_sales",
+            "tardiness",
+            "earliness",
+            "flow_time",
+            "lead_time",
+            "wip",
+            "fg",
+        ]
 
         df_data = np.zeros(shape=(len(products_list), len(columns)))
-        flowtime = []
-        leadtime = []
+        delivered_ontime = []
+        delivered_late = []
+        lost_sales = []
         tardiness = []
         earliness = []
+        flowtime = []
+        leadtime = []
         wip_log = []
         fg_log = []
         if self.env.now >= self.stores.warmup:
             for i, product in enumerate(products_list):
-                if len(self.stores.metrics_prod.flow_time[product]) > 0:
+                # Delivered ontime
+                if len(self.stores.log_products.delivered_ontime[product]) > 0:
                     df_data[i, 0] = np.array(
-                        self.stores.metrics_prod.flow_time[product]
-                    )[:, 1].mean()
-                    flowtime.extend(self.stores.metrics_prod.flow_time[product])
-                if len(self.stores.metrics_prod.lead_time[product]) > 0:
+                        self.stores.log_products.delivered_ontime[product]
+                    )[:, 1].sum()
+                    delivered_ontime.extend(
+                        self.stores.log_products.delivered_ontime[product]
+                    )
+                # Delivered Late
+                if len(self.stores.log_products.delivered_late[product]) > 0:
                     df_data[i, 1] = np.array(
-                        self.stores.metrics_prod.lead_time[product]
-                    )[:, 1].mean()
-                    leadtime.extend(self.stores.metrics_prod.lead_time[product])
-                if len(self.stores.metrics_prod.tardiness[product]) > 0:
+                        self.stores.log_products.delivered_late[product]
+                    )[:, 1].sum()
+                    delivered_late.extend(
+                        self.stores.log_products.delivered_late[product]
+                    )
+                # Lost Sales
+                if len(self.stores.log_products.lost_sales[product]) > 0:
                     df_data[i, 2] = np.array(
-                        self.stores.metrics_prod.tardiness[product]
-                    )[:, 1].mean()
-                    tardiness.extend(self.stores.metrics_prod.tardiness[product])
-                if len(self.stores.metrics_prod.earliness[product]) > 0:
+                        self.stores.log_products.lost_sales[product]
+                    )[:, 1].sum()
+                    lost_sales.extend(self.stores.log_products.lost_sales[product])
+                # Tardiness
+                if len(self.stores.log_products.tardiness[product]) > 0:
                     df_data[i, 3] = np.array(
-                        self.stores.metrics_prod.earliness[product]
+                        self.stores.log_products.tardiness[product]
                     )[:, 1].mean()
-                    earliness.extend(self.stores.metrics_prod.earliness[product])
-                if len(self.stores.metrics_prod.wip_log[product]) > 0:
-                    df_data[i, 4] = np.array(self.stores.metrics_prod.wip_log[product])[
-                        :, 1
-                    ].mean()
-                    wip_log.extend(self.stores.metrics_prod.wip_log[product])
+                    tardiness.extend(self.stores.log_products.tardiness[product])
+                # Earliness
+                if len(self.stores.log_products.earliness[product]) > 0:
+                    df_data[i, 4] = np.array(
+                        self.stores.log_products.earliness[product]
+                    )[:, 1].mean()
+                    earliness.extend(self.stores.log_products.earliness[product])
+                # Flow time
+                if len(self.stores.log_products.flow_time[product]) > 0:
+                    df_data[i, 5] = np.array(
+                        self.stores.log_products.flow_time[product]
+                    )[:, 1].mean()
+                    flowtime.extend(self.stores.log_products.flow_time[product])
+                # Lead time
+                if len(self.stores.log_products.lead_time[product]) > 0:
+                    df_data[i, 6] = np.array(
+                        self.stores.log_products.lead_time[product]
+                    )[:, 1].mean()
+                    leadtime.extend(self.stores.log_products.lead_time[product])
 
-                if len(self.stores.metrics_prod.fg_log[product]) > 0:
-                    df_data[i, 5] = np.array(self.stores.metrics_prod.fg_log[product])[
+                # Wip
+                if len(self.stores.log_products.wip_log[product]) > 0:
+                    df_data[i, 7] = np.array(self.stores.log_products.wip_log[product])[
                         :, 1
                     ].mean()
-                    fg_log.extend(self.stores.metrics_prod.fg_log[product])
+                    wip_log.extend(self.stores.log_products.wip_log[product])
+                # Finished Goods
+                if len(self.stores.log_products.fg_log[product]) > 0:
+                    df_data[i, 8] = np.array(self.stores.log_products.fg_log[product])[
+                        :, 1
+                    ].mean()
+                    fg_log.extend(self.stores.log_products.fg_log[product])
 
             df_data = df_data.round(3)
 
             df_products = pd.DataFrame(df_data, columns=columns, index=products_list)
             df_products.loc["mean", :] = df_products.mean(axis=0)
 
+            ontime_mean = (
+                np.array(delivered_ontime)[:, 1].sum()
+                if len(delivered_ontime) > 0
+                else 0
+            )
+            late_mean = (
+                np.array(delivered_late)[:, 1].sum() if len(delivered_late) > 0 else 0
+            )
+            lost_mean = np.array(lost_sales)[:, 1].sum() if len(lost_sales) > 0 else 0
             flowtime_mean = np.array(flowtime)[:, 1].mean() if len(flowtime) > 0 else 0
             leadtime_mean = np.array(leadtime)[:, 1].mean() if len(leadtime) > 0 else 0
             tardiness_mean = (
@@ -188,11 +229,14 @@ class Monitor:
             )
             fg_log_mean = np.array(fg_log)[:, 1].mean() if len(fg_log) > 0 else 0
 
-            df_products.loc["total_mean", :] = [
-                flowtime_mean,
-                leadtime_mean,
+            df_products.loc["total", :] = [
+                ontime_mean,
+                late_mean,
+                lost_mean,
                 tardiness_mean,
                 earliness_mean,
+                flowtime_mean,
+                leadtime_mean,
                 total_wip_mean,
                 fg_log_mean,
             ]

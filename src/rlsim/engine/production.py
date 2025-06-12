@@ -57,7 +57,7 @@ class Production:
                 breakdown_end = self.env.now
 
                 if self.env.now >= self.warmup:
-                    self.stores.metrics_res.resource_breakdowns[resource].append(
+                    self.stores.log_resources.resource_breakdowns[resource].append(
                         (breakdown_start, round(breakdown_end - breakdown_start, 6))
                     )
 
@@ -77,7 +77,7 @@ class Production:
                 yield self.stores.resource_transport[resource].get()
                 yield self.stores.finished_goods[product].put(productionOrder.quantity)
 
-                self.stores.metrics_prod.flow_time[product].append(
+                self.stores.log_products.flow_time[product].append(
                     (self.env.now, self.env.now - productionOrder.released)
                 )
                 yield self.stores.wip[product].get(productionOrder.quantity)
@@ -127,7 +127,7 @@ class Production:
                 )
                 setup_time = random_number(setup_dist, setup_params)
                 if self.env.now >= self.warmup:
-                    self.stores.metrics_res.resource_setup[resource].append(
+                    self.stores.log_resources.resource_setup[resource].append(
                         (self.env.now, setup_time)
                     )
 
@@ -164,6 +164,6 @@ class Production:
                 yield self.stores.resource_finished[resource].put(productionOrder)
                 yield self.stores.resource_output[resource].put(productionOrder)
                 if self.env.now >= self.warmup:
-                    self.stores.metrics_res.resource_utilization[resource].append(
+                    self.stores.log_resources.resource_utilization[resource].append(
                         (self.env.now, round(end_time - start_time, 6))
                     )

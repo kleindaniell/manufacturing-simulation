@@ -26,9 +26,8 @@ class Stores:
         self._create_resources_stores()
         self._create_products_stores()
 
-        self.metrics_perf = GeneralMetrics(self.products.keys())
-        self.metrics_prod = ProductMetrics(self.products.keys())
-        self.metrics_res = ResourceMetrics(self.resources.keys())
+        self.log_products = ProductMetrics(self.products.keys())
+        self.log_resources = ResourceMetrics(self.resources.keys())
 
         self.total_wip_log: List[Tuple[float, float]] = []
 
@@ -81,12 +80,12 @@ class Stores:
                 total_wip = 0
                 for product in self.products.keys():
 
-                    self.metrics_prod.fg_log[product].append(
+                    self.log_products.fg_log[product].append(
                         (self.env.now, self.finished_goods[product].level)
                     )
 
                     wip = self.wip[product].level
-                    self.metrics_prod.wip_log[product].append((self.env.now, wip))
+                    self.log_products.wip_log[product].append((self.env.now, wip))
                     total_wip += wip
 
                 self.total_wip_log.append((self.env.now, total_wip))
@@ -97,22 +96,11 @@ class Stores:
 
 
 @dataclass
-class GeneralMetrics:
-    products: List[str]
-    delivered_ontime: Dict[str, int] = field(default_factory=dict)
-    delivered_late: Dict[str, int] = field(default_factory=dict)
-    lost_sales: Dict[str, int] = field(default_factory=dict)
-
-    def __post_init__(self):
-        for product in self.products:
-            self.delivered_ontime[product] = 0
-            self.delivered_late[product] = 0
-            self.lost_sales[product] = 0
-
-
-@dataclass
 class ProductMetrics:
     products: List[str]
+    delivered_ontime: Dict[str, List[Tuple[float, float]]] = field(default_factory=dict)
+    delivered_late: Dict[str, List[Tuple[float, float]]] = field(default_factory=dict)
+    lost_sales: Dict[str, List[Tuple[float, float]]] = field(default_factory=dict)
     flow_time: Dict[str, List[Tuple[float, float]]] = field(default_factory=dict)
     lead_time: Dict[str, List[Tuple[float, float]]] = field(default_factory=dict)
     tardiness: Dict[str, List[Tuple[float, float]]] = field(default_factory=dict)
@@ -122,6 +110,9 @@ class ProductMetrics:
 
     def __post_init__(self):
         for product in self.products:
+            self.delivered_ontime[product] = []
+            self.delivered_late[product] = []
+            self.lost_sales[product] = []
             self.flow_time[product] = []
             self.lead_time[product] = []
             self.tardiness[product] = []
