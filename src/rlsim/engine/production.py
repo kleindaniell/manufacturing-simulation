@@ -1,4 +1,7 @@
+from typing import Dict
+
 import simpy
+import simpy.events
 
 from rlsim.engine.control import ProductionOrder, Stores
 from rlsim.engine.utils import random_number
@@ -13,12 +16,11 @@ class Production:
         self._create_resources()
 
     def _create_resources(self) -> None:
-        self.resources = {}
-        self.machine_down = {}
-        self.wait_queue = {}
+        self.resources: Dict[str, simpy.Resource] = {}
+        self.machine_down: Dict[str, simpy.Event] = {}
 
         for resource in self.stores.resources:
-            resource_config = self.stores.resources.get(resource)
+            resource_config: dict = self.stores.resources.get(resource)
             quantity = resource_config.get("quantity", 1)
 
             self.resources[resource] = simpy.Resource(self.env, quantity)
@@ -57,7 +59,7 @@ class Production:
                 breakdown_end = self.env.now
 
                 if self.env.now >= self.warmup:
-                    self.stores.log_resources.resource_breakdowns[resource].append(
+                    self.stores.log_resources.breakdowns[resource].append(
                         (breakdown_start, round(breakdown_end - breakdown_start, 6))
                     )
 
@@ -127,7 +129,7 @@ class Production:
                 )
                 setup_time = random_number(setup_dist, setup_params)
                 if self.env.now >= self.warmup:
-                    self.stores.log_resources.resource_setup[resource].append(
+                    self.stores.log_resources.setups[resource].append(
                         (self.env.now, setup_time)
                     )
 
@@ -164,6 +166,6 @@ class Production:
                 yield self.stores.resource_finished[resource].put(productionOrder)
                 yield self.stores.resource_output[resource].put(productionOrder)
                 if self.env.now >= self.warmup:
-                    self.stores.log_resources.resource_utilization[resource].append(
+                    self.stores.log_resources.utilization[resource].append(
                         (self.env.now, round(end_time - start_time, 6))
                     )

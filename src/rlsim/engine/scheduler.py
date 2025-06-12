@@ -28,6 +28,10 @@ class Scheduler(ABC):
         # Add productionOrder to first resource input
         yield self.stores.resource_input[first_resource].put(productionOrder)
 
+        self.stores.log_products.released[product].append(
+            (self.env.now, productionOrder.quantity)
+        )
+
     @abstractmethod
     def _scheduler(self):
         pass

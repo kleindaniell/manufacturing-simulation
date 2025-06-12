@@ -1,10 +1,13 @@
 import random
+from dataclasses import asdict
 from pathlib import Path
 from typing import List
 from time import time
 
+
 import simpy
 import yaml
+import json
 import numpy as np
 import pandas as pd
 
@@ -123,10 +126,10 @@ if __name__ == "__main__":
     with open(products_path, "r") as file:
         products_cfg = yaml.safe_load(file)
 
-    run_until = 400001
+    run_until = 200001
     schedule_interval = 48
     monitor_interval = 50000
-    warmup = 200000
+    warmup = 100000
     warmup_monitor = 0
 
     start_time = time()
@@ -146,3 +149,8 @@ if __name__ == "__main__":
     end_time = time()
     elapsed_time = end_time - start_time
     print(f"Elapsed time: {elapsed_time:.4f} seconds")
+
+    df_products = sim.stores.log_products.to_dataframe()
+    df_products.to_csv(Path("simulations/dbr_mta/data/products.csv"), index=False)
+    df_resources = sim.stores.log_resources.to_dataframe()
+    df_resources.to_csv(Path("simulations/dbr_mta/data/resources.csv"), index=False)

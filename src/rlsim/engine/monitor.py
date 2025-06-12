@@ -85,27 +85,25 @@ class Monitor:
         df_data = np.zeros(shape=(len(resources_list), len(columns)))
         if self.env.now >= self.stores.warmup:
             for i, resource in enumerate(resources_list):
-                if len(self.stores.log_resources.resource_utilization[resource]) > 0:
+                if len(self.stores.log_resources.utilization[resource]) > 0:
                     try:
                         df_data[i, 0] = np.array(
-                            self.stores.log_resources.resource_utilization[resource],
+                            self.stores.log_resources.utilization[resource],
                             dtype=np.float32,
                         )[:, 1].sum() / (self.env.now - self.stores.warmup)
                     except ZeroDivisionError:
                         df_data[i, 0] = 0
 
-                df_data[i, 1] = len(
-                    self.stores.log_resources.resource_breakdowns[resource]
-                )
+                df_data[i, 1] = len(self.stores.log_resources.breakdowns[resource])
                 if df_data[i, 1] > 0:
                     df_data[i, 2] = np.array(
-                        self.stores.log_resources.resource_breakdowns[resource]
+                        self.stores.log_resources.breakdowns[resource]
                     )[:, 1].mean()
 
-                df_data[i, 3] = len(self.stores.log_resources.resource_setup[resource])
+                df_data[i, 3] = len(self.stores.log_resources.setups[resource])
                 if df_data[i, 3] > 0:
                     df_data[i, 4] = np.array(
-                        self.stores.log_resources.resource_setup[resource]
+                        self.stores.log_resources.setups[resource]
                     )[:, 1].mean()
 
         df_data = df_data.round(3)
