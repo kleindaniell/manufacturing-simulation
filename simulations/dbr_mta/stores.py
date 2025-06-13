@@ -15,21 +15,28 @@ class DBR_stores(Stores):
         products: dict,
         warmup: int = 0,
         log_interval: int = 72,
-        cb_start: int = 0,
+        training: bool = False,
+        seed: int = None,
+        **kwargs,
     ):
-        super().__init__(env, resources, products, warmup, log_interval)
+        super().__init__(
+            env=kwargs.get("env", env),
+            products=kwargs.get("products", products),
+            resources=kwargs.get("resources", resources),
+            warmup=kwargs.get("warmup", warmup),
+            log_interval=kwargs.get("log_interval", log_interval),
+            training=kwargs.get("training", training),
+            seed=kwargs.get("seed", seed),
+        )
 
-        self._create_constraint_buffer(cb_start)
         self._create_shipping_buffers()
+
+        self.constraint_buffer = 0
+        self.constraint_buffer_level = 0
 
         self.contraint_resource, self.utilization_df = self.define_constraint()
 
         self.update_constraint_buffer(self.contraint_resource)
-
-    def _create_constraint_buffer(self, cb_start):
-        # Constraint buffers
-        self.constraint_buffer = cb_start
-        self.constraint_buffer_level = 0
 
     def _create_shipping_buffers(self):
         # Shipping_buffer

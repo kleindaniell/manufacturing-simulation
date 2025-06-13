@@ -2,28 +2,27 @@ from typing import Tuple, List
 
 from rlsim.engine.control import DemandOrder, ProductionOrder
 from rlsim.engine.scheduler import Scheduler
-from rlsim.stores.dbr_mta_store import DBR_stores
+from stores import DBR_stores
 
 
 class DBR_MTA(Scheduler):
     def __init__(
-        self,
-        stores: DBR_stores,
-        schedule_interval,
-        constraint_buffer_size,
+        self, stores: DBR_stores, schedule_interval, constraint_buffer_size, **kwargs
     ):
-        super().__init__(stores)
-        self.stores = stores
-        self.stores.constraint_buffer = constraint_buffer_size
-        self.schedule_interval = schedule_interval
+        super().__init__(stores, run_scheduler=False)
+        self.stores = kwargs.get("stores", stores)
+        self.stores.constraint_buffer = kwargs.get(
+            "constraint_buffer_size", constraint_buffer_size
+        )
+        self.schedule_interval = kwargs.get("schedule_interval", schedule_interval)
 
         self.run_scheduler()
         self.env.process(self._process_demandOders())
 
     def run_scheduler(self):
-        self.env.process(self._scheduler(self.schedule_interval))
+        self.env.process(self.scheduler(self.schedule_interval))
 
-    def _scheduler(self, interval):
+    def scheduler(self, interval):
         ccr_setup_time_params = self.stores.resources[
             self.stores.contraint_resource
         ].get("setup", {"params": None})

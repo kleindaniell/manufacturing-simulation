@@ -6,11 +6,12 @@ from rlsim.engine.control import ProductionOrder, Stores, DemandOrder
 
 
 class Scheduler(ABC):
-    def __init__(self, store: Stores):
+    def __init__(self, store: Stores, run_scheduler: bool = True):
         self.stores = store
         self.env: simpy.Environment = store.env
 
-        self.run_scheduler()
+        if run_scheduler:
+            self.run_scheduler()
 
     def release_order(self, productionOrder: ProductionOrder):
         product = productionOrder.product

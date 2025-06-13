@@ -1,142 +1,129 @@
-import random
+import argparse
 from pathlib import Path
-from typing import List
 from time import time
+from typing import List
 
-
-import simpy
 import yaml
+from scheduler import DBR_MTA
+from stores import DBR_stores
 
 from rlsim.engine.control import ProductionOrder
-from rlsim.engine.inbound import Inbound
-from rlsim.engine.monitor import Monitor
-from rlsim.engine.outbound import Outbound
-from rlsim.engine.production import Production
-from rlsim.stores.dbr_mta_store import DBR_stores
-
-# from rlsim.scheduler.dbr_mta_scheduler import DBR_MTA
-from scheduler import DBR_MTA
+from rlsim.environment import Environment
 
 
-class SimulationModel:
-    def __init__(
-        self,
-        run_until: int,
-        resources_cfg: dict,
-        products_cfg: dict,
-        schedule_interval: int,
-        set_constraint: int = None,
-        monitor_interval: int = 0,
-        warmup: int = 0,
-        warmup_monitor: int = 0,
-        log_interval: int = 72,
-        seed: int = None,
-    ):
-        super().__init__()
-        random.seed(seed)
-        self.env = simpy.Environment()
+def parse_args():
+    parser = argparse.ArgumentParser(description="Run simulation environment")
 
-        # Parameters
-        self.resources_config = resources_cfg
-        self.products_config = products_cfg
-        self.warmup = warmup
-        self.warmup_monitor = warmup_monitor
-        self.run_until = run_until
-        self.monitor_interval = monitor_interval
-        self.log_interval = log_interval
-        self.schedule_interval = schedule_interval
-        self.set_constraint = set_constraint
+    parser.add_argument(
+        "--run-until", type=int, default=200001, help="Simulation end time"
+    )
+    parser.add_argument(
+        "--monitor-interval",
+        type=int,
+        default=50000,
+        help="Interval for monitor prints",
+    )
+    parser.add_argument(
+        "--log-interval", type=int, default=48, help="Interval between vars log"
+    )
+    parser.add_argument(
+        "--warmup",
+        type=int,
+        default=100000,
+        help="Warmup for start logging results",
+    )
+    parser.add_argument(
+        "--monitor-warmup", type=int, default=0, help="Warmup for monitor prints"
+    )
 
-        self.stores = DBR_stores(
-            env=self.env,
-            resources=self.resources_config,
-            products=self.products_config,
-            warmup=self.warmup,
-            log_interval=self.log_interval,
-        )
-        if self.set_constraint:
-            self.stores.contraint_resource = self.set_constraint
+    parser.add_argument(
+        "--cb-size", type=int, default=2000, help="Constraint buffer size"
+    )
+    parser.add_argument(
+        "--schedule-interval", type=int, default=72, help="Schedule interval"
+    )
 
-        self.monitor = Monitor(
-            self.stores,
-            self.monitor_interval,
-            warmup=self.warmup_monitor,
-            show_print=True,
-        )
-        callback = self.order_selection_callback()
-        self.production = Production(self.stores, order_selection_fn=callback)
+    parser.add_argument(
+        "--resources", default=None, type=str, help="Resouce config yaml file path"
+    )
 
-        self.scheduler = DBR_MTA(
-            self.stores,
-            self.schedule_interval,
-            constraint_buffer_size=2000,
-        )
-        self.inboud = Inbound(self.stores)
-        self.outbound = Outbound(self.stores, delivery_mode="instantly")
+    parser.add_argument(
+        "--products", default=None, type=str, help="Product config yaml file path"
+    )
 
-    def run_simulation(self):
-        self.env.run(until=self.run_until)
+    parser.add_argument("--seed", type=int, default=None, help="Random seed")
 
-    def order_selection_callback(self):
-        def order_selection(store: DBR_stores, resource):
-            orders: List[ProductionOrder] = store.resource_input[resource].items
-            # print(f"\n {self.env.now}")
-            # print(f"{resource}")
-            for id, productionOrder in enumerate(orders):
-                ahead_orders: List[ProductionOrder] = []
-                for resource_ in self.stores.resources.keys():
-                    ahead_orders.extend(self.stores.resource_input[resource_].items)
-                    ahead_orders.extend(self.stores.resource_output[resource_].items)
-                    ahead_orders.extend(self.stores.resource_transport[resource_].items)
-                    ahead_orders.extend(
-                        self.stores.resource_processing[resource_].items
-                    )
+    return parser.parse_args()
 
-                product = productionOrder.product
-                released = productionOrder.released
-                ahead_quantity = [
-                    order.quantity
-                    for order in ahead_orders
-                    if order.released < released and order.product == product
-                ]
-                orders[id].priority = (
-                    sum(ahead_quantity) + self.stores.finished_goods[product].level
-                ) / self.stores.shipping_buffer[product]
 
-                # print(f"{productionOrder.product}: {productionOrder.priority}")
+def order_selection_callback():
+    def order_selection(store: DBR_stores, resource):
+        orders: List[ProductionOrder] = store.resource_input[resource].items
 
-            order = sorted(orders, key=lambda x: x.priority)[0]
-            # print(f"SELECTED: {order.product}: {order.priority}")
-            return order.id
+        for id, productionOrder in enumerate(orders):
+            ahead_orders: List[ProductionOrder] = []
+            for resource_ in store.resources.keys():
+                ahead_orders.extend(store.resource_input[resource_].items)
+                ahead_orders.extend(store.resource_output[resource_].items)
+                ahead_orders.extend(store.resource_transport[resource_].items)
+                ahead_orders.extend(store.resource_processing[resource_].items)
 
-        return order_selection
+            product = productionOrder.product
+            released = productionOrder.released
+            ahead_quantity = [
+                order.quantity
+                for order in ahead_orders
+                if order.released < released and order.product == product
+            ]
+            orders[id].priority = (
+                sum(ahead_quantity) + store.finished_goods[product].level
+            ) / store.shipping_buffer[product]
+
+        order = sorted(orders, key=lambda x: x.priority)[0]
+        return order.id
+
+    return order_selection
 
 
 if __name__ == "__main__":
-    resource_path = Path("simulations/dbr_mta/config/resources.yaml")
+    args = parse_args()
+
+    sim_path = Path(__file__).resolve().parent
+    # Load YAML config files
+    if args.resources:
+        resource_path = args.resources
+    else:
+        resource_path = sim_path / "config/resources.yaml"
     with open(resource_path, "r") as file:
         resources_cfg = yaml.safe_load(file)
 
-    products_path = Path("simulations/dbr_mta/config/products.yaml")
+    if args.products:
+        resource_path = args.products
+    else:
+        products_path = sim_path / "config/products.yaml"
     with open(products_path, "r") as file:
         products_cfg = yaml.safe_load(file)
 
-    run_until = 200001
-    schedule_interval = 48
-    monitor_interval = 50000
-    warmup = 100000
-    warmup_monitor = 0
-
     start_time = time()
 
-    sim = SimulationModel(
-        run_until=run_until,
+    # Instantiate and run simulation
+    sim = Environment(
+        run_until=args.run_until,
         resources_cfg=resources_cfg,
         products_cfg=products_cfg,
-        schedule_interval=schedule_interval,
-        monitor_interval=monitor_interval,
-        warmup=warmup,
-        warmup_monitor=warmup_monitor,
+        monitor_interval=args.monitor_interval,
+        log_interval=args.log_interval,
+        monitor_warmup=args.monitor_warmup,
+        warmup=args.warmup,
+        seed=args.seed,
+        stores=DBR_stores,
+        scheduler=DBR_MTA,
+        scheduler_kwargs={
+            "schedule_interval": args.schedule_interval,
+            "constraint_buffer_size": args.cb_size,
+        },
+        outbound_kwargs={"delivery_mode": "instantly"},
+        production_kwargs={"order_selection_fn": order_selection_callback()},
     )
 
     sim.run_simulation()
@@ -146,6 +133,7 @@ if __name__ == "__main__":
     print(f"Elapsed time: {elapsed_time:.4f} seconds")
 
     df_products = sim.stores.log_products.to_dataframe()
-    df_products.to_csv(Path("simulations/dbr_mta/data/products.csv"), index=False)
+    df_products.to_csv(sim_path / "data/products.csv", index=False)
     df_resources = sim.stores.log_resources.to_dataframe()
-    df_resources.to_csv(Path("simulations/dbr_mta/data/resources.csv"), index=False)
+    df_resources.to_csv(sim_path / "data/resources.csv", index=False)
+    sim.save_parameters(sim_path / "data")

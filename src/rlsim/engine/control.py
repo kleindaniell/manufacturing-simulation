@@ -1,8 +1,8 @@
 from dataclasses import dataclass, field, fields
-from typing import Optional, Dict, List, Tuple
+from typing import Dict, List, Optional, Tuple
 
-import simpy
 import pandas as pd
+import simpy
 
 
 class Stores:
