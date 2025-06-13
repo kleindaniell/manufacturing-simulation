@@ -25,7 +25,6 @@ class Outbound:
 
         elif self.delivery_mode == "instantly":
             for product in self.stores.products.keys():
-                print(f"start delivery: {product}")
                 self.env.process(self._delivery_instantly(product))
 
     def _delivery_instantly(self, product):

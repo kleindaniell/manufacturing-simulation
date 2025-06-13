@@ -7,7 +7,12 @@ from stores import DBR_stores
 
 class DBR_MTA(Scheduler):
     def __init__(
-        self, stores: DBR_stores, schedule_interval, constraint_buffer_size, **kwargs
+        self,
+        stores: DBR_stores,
+        schedule_interval,
+        constraint_buffer_size,
+        ccr_release_limit,
+        **kwargs,
     ):
         super().__init__(stores, run_scheduler=False)
         self.stores = kwargs.get("stores", stores)
@@ -15,6 +20,7 @@ class DBR_MTA(Scheduler):
             "constraint_buffer_size", constraint_buffer_size
         )
         self.schedule_interval = kwargs.get("schedule_interval", schedule_interval)
+        self.ccr_release_limit = kwargs.get("ccr_release_limit", ccr_release_limit)
 
         self.run_scheduler()
         self.env.process(self._process_demandOders())
@@ -60,25 +66,20 @@ class DBR_MTA(Scheduler):
 
             # Ordenate by priority
             orders = list(sorted(orders, key=lambda x: x[-1], reverse=True))
-            # Release orders based on priority
 
-            # print(f"\n {self.env.now} \n")
-            # print(f"{self.stores.contraint_resource}")
-            # print(f"{self.stores.constraint_buffer}")
-            # print(f"{self.stores.constraint_buffer_level}")
+            # Release orders based on priority
             if self.stores.constraint_buffer_level < self.stores.constraint_buffer:
                 ccr_safe_load = (
                     self.stores.constraint_buffer - self.stores.constraint_buffer_level
                 )
 
-                # print(f"safe load: {ccr_safe_load}")
                 ccr_released = 0
                 for productionOrder, ccr_time, _ in orders:
                     product = productionOrder.product
                     quantity = productionOrder.quantity
                     release = False
                     if ccr_time > 0:
-                        if ccr_safe_load > 0 and ccr_released < 5:
+                        if ccr_safe_load > 0 and ccr_released < self.ccr_release_limit:
                             ccr_time = (quantity * ccr_time) + ccr_setup_time
                             productionOrder.schedule = self.env.now + ccr_time
                             release = True
@@ -91,8 +92,6 @@ class DBR_MTA(Scheduler):
                     if quantity > 0 and release:
                         self.env.process(self.process_order(productionOrder, ccr_time))
                         ccr_safe_load -= ccr_time
-                        # print(f"{product}: {productionOrder.quantity}")
-                        # print(f"safe load updated: {ccr_safe_load}")
 
             yield self.env.timeout(interval)
 
