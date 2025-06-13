@@ -13,10 +13,12 @@ from rlsim.engine.monitor import Monitor
 from rlsim.engine.outbound import Outbound
 from rlsim.engine.production import Production
 from rlsim.stores.dbr_mta_store import DBR_stores
-from rlsim.scheduler.dbr_mta_scheduler import DBR_MTA
+
+# from rlsim.scheduler.dbr_mta_scheduler import DBR_MTA
+from scheduler import DBR_MTA
 
 
-class Simulation:
+class SimulationModel:
     def __init__(
         self,
         run_until: int,
@@ -69,13 +71,10 @@ class Simulation:
             self.schedule_interval,
             constraint_buffer_size=2000,
         )
-        self.inboud = Inbound(self.stores, self.products_config)
-        self.outbound = Outbound(
-            self.stores, self.products_config, delivery_mode="instantly"
-        )
+        self.inboud = Inbound(self.stores)
+        self.outbound = Outbound(self.stores, delivery_mode="instantly")
 
     def run_simulation(self):
-
         self.env.run(until=self.run_until)
 
     def order_selection_callback(self):
@@ -130,7 +129,7 @@ if __name__ == "__main__":
 
     start_time = time()
 
-    sim = Simulation(
+    sim = SimulationModel(
         run_until=run_until,
         resources_cfg=resources_cfg,
         products_cfg=products_cfg,
