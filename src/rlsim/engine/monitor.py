@@ -13,15 +13,13 @@ class Monitor:
         stores: Stores,
         interval: int = 72,
         warmup: int = 0,
-        show_print: bool = False,
     ):
         self.stores = stores
         self.env: simpy.Environment = stores.env
         self.interval = interval
         self.warmup = warmup
-        self.show_print = show_print
 
-        if self.show_print:
+        if self.interval > 0:
             self.env.process(self.run())
 
     def run(self):

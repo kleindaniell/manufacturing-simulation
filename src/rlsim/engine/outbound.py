@@ -9,32 +9,27 @@ class Outbound:
     def __init__(
         self,
         stores: Stores,
-        products_cfg: dict,
-        delivery_mode: Literal["asReady", "onDue", "instantly"],
-        training: bool = False,
+        delivery_mode: Literal["asReady", "onDue", "instantly"] = "asReady",
     ):
         self.stores = stores
         self.env: simpy.Environment = stores.env
-        self.products = products_cfg
         self.delivery_mode = delivery_mode
-        self.training = training
 
         if self.delivery_mode == "asReady":
-            for product in self.products.keys():
+            for product in self.stores.products.keys():
                 self.env.process(self._delivery_as_ready(product))
 
         elif self.delivery_mode == "onDue":
-            for product in self.products.keys():
+            for product in self.stores.products.keys():
                 self.env.process(self._delivery_on_duedate(product))
 
         elif self.delivery_mode == "instantly":
-            for product in self.products.keys():
+            for product in self.stores.products.keys():
                 print(f"start delivery: {product}")
                 self.env.process(self._delivery_instantly(product))
 
     def _delivery_instantly(self, product):
         while True:
-
             demandOrder: DemandOrder = yield self.stores.outbound_demand_orders[
                 product
             ].get()
@@ -42,7 +37,7 @@ class Outbound:
             quantity = demandOrder.quantity
             if self.stores.finished_goods[product].level >= quantity:
                 yield self.stores.finished_goods[product].get(quantity)
-                if not self.training and self.stores.warmup < self.env.now:
+                if not self.stores.training and self.stores.warmup < self.env.now:
                     self.stores.log_products.delivered_ontime[product].append(
                         (self.env.now, quantity)
                     )
@@ -64,7 +59,7 @@ class Outbound:
             yield self.stores.finished_goods[product].get(quantity)
             # check ontime or late
             demandOrder.delivered = self.env.now
-            if not self.training and self.stores.warmup < self.env.now:
+            if not self.stores.training and self.stores.warmup < self.env.now:
                 if demandOrder.delivered <= duedate:
                     self.stores.log_products.delivered_ontime[product].append(
                         (self.env.now, quantity)
@@ -98,7 +93,7 @@ class Outbound:
 
             # Check ontime or late
             demandOrder.delivered = self.env.now
-            if not self.training and self.stores.warmup < self.env.now:
+            if not self.stores.training and self.stores.warmup < self.env.now:
                 if demandOrder.delivered <= duedate:
                     self.stores.log_products.delivered_ontime[product].append(
                         (self.env.now, quantity)

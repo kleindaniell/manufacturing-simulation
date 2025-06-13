@@ -8,7 +8,7 @@ from rlsim.engine.utils import random_number
 
 
 class Production:
-    def __init__(self, stores: Stores, warmup: int = 0, order_selection_fn=None):
+    def __init__(self, stores: Stores, order_selection_fn=None):
         self.stores: Stores = stores
         self.env: simpy.Environment = stores.env
         self.warmup = self.stores.warmup
