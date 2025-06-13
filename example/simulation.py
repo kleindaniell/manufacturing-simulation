@@ -1,61 +1,42 @@
-import random
+import argparse
 from pathlib import Path
-from typing import List
 
-import simpy
 import yaml
 
-from rlsim.engine.control import ProductionOrder, Stores
-from rlsim.engine.inbound import Inbound
-from rlsim.engine.monitor import Monitor
-from rlsim.engine.outbound import Outbound
-from rlsim.engine.production import Production
-from rlsim.engine.scheduler import Scheduler
+from rlsim.environment import Environment
 
 
-class Simulation:
-    def __init__(
-        self,
-        run_until: int,
-        resources_cfg: dict,
-        products_cfg: dict,
-        monitor_interval: int = 0,
-        warmup: bool = False,
-        seed: int = None,
-    ):
-        super().__init__()
-        random.seed(seed)
-        self.env = simpy.Environment()
+def parse_args():
+    parser = argparse.ArgumentParser(description="Run simulation environment")
 
-        # Parameters
-        self.resources_config = resources_cfg
-        self.products_config = products_cfg
-        self.warmup = warmup
-        self.run_until = run_until
-        self.monitor_interval = monitor_interval
+    parser.add_argument(
+        "--run-until", type=int, default=200001, help="Simulation end time"
+    )
+    parser.add_argument(
+        "--monitor-interval", type=int, default=50000, help="Monitor sampling interval"
+    )
+    parser.add_argument(
+        "--log-interval", type=int, default=48, help="Log sampling interval"
+    )
+    parser.add_argument(
+        "--warmup",
+        type=int,
+        default=0,
+        help="Warmup duration for start logging results",
+    )
+    parser.add_argument(
+        "--monitor-warmup", type=int, default=0, help="Warmup duration for monitor"
+    )
 
-        self.stores = Stores(self.env, self.resources_config, self.products_config)
-        self.monitor = Monitor(self.stores, self.monitor_interval, show_print=True)
-        callback = self.order_selection_callback()
-        self.production = Production(self.stores, order_selection_fn=callback)
-        self.scheduler = Scheduler(self.stores)
-        self.inboud = Inbound(self.stores)
-        self.outbound = Outbound(self.stores, delivery_mode="asReady")
+    parser.add_argument("--seed", type=int, default=None, help="Random seed")
 
-    def run_simulation(self):
-        print(self.run_until)
-        self.env.run(until=self.run_until)
-
-    def order_selection_callback(self):
-        def order_selection(store: Stores, resource):
-            orders: List[ProductionOrder] = store.resource_input[resource].items
-            order = sorted(orders, key=lambda x: x.duedate)[0]
-            return order.id
-
-        return order_selection
+    return parser.parse_args()
 
 
 if __name__ == "__main__":
+    args = parse_args()
+
+    # Load YAML config files
     resource_path = Path("example/config/resources.yaml")
     with open(resource_path, "r") as file:
         resources_cfg = yaml.safe_load(file)
@@ -64,14 +45,16 @@ if __name__ == "__main__":
     with open(products_path, "r") as file:
         products_cfg = yaml.safe_load(file)
 
-    run_until = 2400
-    monitor_interval = 2
-
-    sim = Simulation(
-        run_until=run_until,
+    # Instantiate and run simulation
+    sim = Environment(
+        run_until=args.run_until,
         resources_cfg=resources_cfg,
         products_cfg=products_cfg,
-        monitor_interval=monitor_interval,
+        monitor_interval=args.monitor_interval,
+        log_interval=args.log_interval,
+        monitor_warmup=args.monitor_warmup,
+        warmup=args.warmup,
+        seed=args.seed,
     )
 
     sim.run_simulation()
