@@ -14,6 +14,7 @@ class Stores:
         warmup: int = 0,
         log_interval: int = 72,
         training: bool = False,
+        seed: int = None,
     ):
         self.env = env
         self.resources: Dict[str, dict] = resources
@@ -21,6 +22,7 @@ class Stores:
         self.warmup = warmup
         self.log_interval = log_interval
         self.training = training
+        self.seed = seed
 
         self._create_process_data()
         self._create_resources_stores()

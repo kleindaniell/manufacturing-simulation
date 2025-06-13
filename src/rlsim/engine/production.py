@@ -4,7 +4,7 @@ import simpy
 import simpy.events
 
 from rlsim.engine.control import ProductionOrder, Stores
-from rlsim.engine.utils import random_number
+from rlsim.engine.utils import Distribution
 
 
 class Production:
@@ -13,6 +13,7 @@ class Production:
         self.env: simpy.Environment = stores.env
         self.warmup = self.stores.warmup
         self.order_selection_fn = order_selection_fn
+        self.dist = Distribution(seed=self.stores.seed)
         self._create_resources()
 
     def _create_resources(self) -> None:
@@ -43,13 +44,13 @@ class Production:
                     "dist", "constant"
                 )
                 tbf_params = self.stores.resources[resource]["tbf"].get("params", [0])
-                tbf = random_number(tbf_dist, tbf_params)
+                tbf = self.dist.random_number(tbf_dist, tbf_params)
 
                 ttr_dist = self.stores.resources[resource]["ttr"].get(
                     "dist", "constant"
                 )
                 ttr_params = self.stores.resources[resource]["ttr"].get("params", [0])
-                ttr = random_number(ttr_dist, ttr_params)
+                ttr = self.dist.random_number(ttr_dist, ttr_params)
 
                 yield self.env.timeout(tbf)
                 self.machine_down[resource] = self.env.event()
@@ -127,7 +128,7 @@ class Production:
                 setup_params = self.stores.resources[resource]["setup"].get(
                     "params", [0]
                 )
-                setup_time = random_number(setup_dist, setup_params)
+                setup_time = self.dist.random_number(setup_dist, setup_params)
                 if self.env.now >= self.warmup:
                     self.stores.log_resources.setups[resource].append(
                         (self.env.now, setup_time)
@@ -152,7 +153,7 @@ class Production:
                 start_time = self.env.now
 
                 for part in range(int(order_quantity)):
-                    processing_time = random_number(
+                    processing_time = self.dist.random_number(
                         process_time_dist, process_time_params
                     )
 

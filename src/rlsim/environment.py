@@ -1,9 +1,6 @@
-import argparse
 import random
-from pathlib import Path
 from typing import Type
 import simpy
-import yaml
 
 from rlsim.engine.control import Stores
 from rlsim.engine.inbound import Inbound
@@ -38,7 +35,6 @@ class Environment:
         seed: int = None,
     ):
         super().__init__()
-        random.seed(seed)
 
         stores_kwargs = stores_kwargs or {}
         monitor_kwargs = monitor_kwargs or {}
@@ -57,6 +53,7 @@ class Environment:
         self.monitor_warmup = monitor_warmup
         self.monitor_interval = monitor_interval
         self.log_interval = log_interval
+        self.seed = seed
 
         # Engine
         self.stores = stores(
@@ -65,6 +62,7 @@ class Environment:
             products=self.products_config,
             warmup=self.warmup,
             log_interval=self.log_interval,
+            seed=self.seed,
             **stores_kwargs,
         )
         self.monitor = monitor(
@@ -81,61 +79,3 @@ class Environment:
     def run_simulation(self):
         print(self.run_until)
         self.env.run(until=self.run_until)
-
-
-def parse_args():
-    parser = argparse.ArgumentParser(description="Run simulation environment")
-
-    parser.add_argument(
-        "--resources", type=Path, required=True, help="Path to resources config YAML"
-    )
-    parser.add_argument(
-        "--products", type=Path, required=True, help="Path to products config YAML"
-    )
-    parser.add_argument(
-        "--run-until", type=int, default=200001, help="Simulation end time"
-    )
-    parser.add_argument(
-        "--monitor-interval", type=int, default=50000, help="Monitor sampling interval"
-    )
-    parser.add_argument(
-        "--log-interval", type=int, default=48, help="Log sampling interval"
-    )
-    parser.add_argument(
-        "--warmup",
-        type=int,
-        default=0,
-        help="Warmup duration for start logging results",
-    )
-    parser.add_argument(
-        "--monitor-warmup", type=int, default=0, help="Warmup duration for monitor"
-    )
-
-    parser.add_argument("--seed", type=int, default=None, help="Random seed")
-
-    return parser.parse_args()
-
-
-if __name__ == "__main__":
-    args = parse_args()
-
-    # Load YAML config files
-    with open(args.resources, "r") as f:
-        resources_cfg = yaml.safe_load(f)
-
-    with open(args.products, "r") as f:
-        products_cfg = yaml.safe_load(f)
-
-    # Instantiate and run simulation
-    sim = Environment(
-        run_until=args.run_until,
-        resources_cfg=resources_cfg,
-        products_cfg=products_cfg,
-        monitor_interval=args.monitor_interval,
-        log_interval=args.log_interval,
-        monitor_warmup=args.monitor_warmup,
-        warmup=args.warmup,
-        seed=args.seed,
-    )
-
-    sim.run_simulation()

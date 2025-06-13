@@ -2,7 +2,7 @@ import simpy
 import numpy as np
 
 from rlsim.engine.control import DemandOrder, Stores
-from rlsim.engine.utils import random_number
+from rlsim.engine.utils import Distribution
 
 
 class Inbound:
@@ -12,6 +12,7 @@ class Inbound:
     ):
         self.stores = stores
         self.env: simpy.Environment = stores.env
+        self.dist = Distribution(seed=self.stores.seed)
 
         for product in self.stores.products.keys():
             self.env.process(self._generate_demand_orders(product))
@@ -27,10 +28,10 @@ class Inbound:
         due_params = product_config["demand"]["duedate"].get("params")
 
         while True:
-            frequency = np.float32(random_number(freq_dist, freq_params))
+            frequency = np.float32(self.dist.random_number(freq_dist, freq_params))
 
-            quantity = round(random_number(quantity_dist, quantity_params), 0)
-            duedate = np.float32(random_number(due_dist, due_params))
+            quantity = round(self.dist.random_number(quantity_dist, quantity_params), 0)
+            duedate = np.float32(self.dist.random_number(due_dist, due_params))
 
             yield self.env.timeout(frequency)
 
