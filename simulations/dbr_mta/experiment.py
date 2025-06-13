@@ -1,137 +1,201 @@
-import argparse
+import random
+import time
+from datetime import datetime
 from pathlib import Path
-from time import time
-from typing import List
+from typing import Dict, Any, List
 
+import pandas as pd
 import yaml
 
-from simulation import
+from cli_config import create_experiment_parser, extract_simulation_args
+from rlsim.environment import load_config
+from simulation import SimulationDBR
 
 
-def parse_args():
-    parser = argparse.ArgumentParser(description="Run simulation environment")
+class ExperimentRunner:
+    """Runner for multiple DBR simulation experiments."""
 
-    parser.add_argument(
-        "--run-until", type=int, default=200001, help="Simulation end time"
+    def __init__(
+        self,
+        resources_cfg: Dict[str, Any],
+        products_cfg: Dict[str, Any],
+        simulation_args: Dict[str, Any],
+        number_of_runs: int,
+        save_folder_path: Path,
+        sim_path: Path = None,
+    ):
+        self.resources_cfg = resources_cfg
+        self.products_cfg = products_cfg
+        self.simulation_args = simulation_args
+        self.number_of_runs = number_of_runs
+        self.save_folder_path = Path(save_folder_path)
+        self.sim_path = sim_path or Path.cwd()
+
+        # Create save directory
+        self.save_folder_path.mkdir(parents=True, exist_ok=True)
+
+        # Store experiment results
+        self.results = []
+
+    def run_experiment(self) -> List[Dict[str, Any]]:
+        """Run multiple simulation experiments."""
+        print(f"Starting experiment with {self.number_of_runs} runs")
+        print(f"Results will be saved to: {self.save_folder_path}")
+
+        start_time = time.time()
+
+        for run_id in range(self.number_of_runs):
+            print(f"\n--- Running simulation - {run_id + 1}/{self.number_of_runs} ---")
+
+            # Set unique seed for each run if base seed is provided
+            run_args = self.simulation_args.copy()
+            if run_args.get("seed") is not None:
+                run_args["seed"] = run_args["seed"] + run_id
+            else:
+                # Generate random seed for reproducibility
+                run_args["seed"] = random.randint(0, 999999)
+
+            # Run single simulation
+            result = self._run_single_simulation(run_id, run_args)
+            self.results.append(result)
+
+            print(f"Run {run_id + 1} completed in {result['elapsed_time']:.4f} seconds")
+
+        total_time = time.time() - start_time
+        print(f"\nExperiment completed in {total_time:.4f} seconds")
+
+        # Save experiment summary
+        self._save_experiment_summary(total_time)
+
+        return self.results
+
+    def _run_single_simulation(
+        self, run_id: int, run_args: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """Run a single simulation and save results."""
+        # Create simulation
+        sim = SimulationDBR(
+            resources_cfg=self.resources_cfg, products_cfg=self.products_cfg, **run_args
+        )
+
+        # Run simulation
+        elapsed_time = sim.run_simulation()
+
+        # Create run-specific folder
+        run_folder = self.save_folder_path / f"run_{run_id:03d}"
+        run_folder.mkdir(exist_ok=True)
+
+        # Save logs and parameters
+        sim.save_logs(run_folder)
+        sim.save_params(run_folder)
+
+        # Save run-specific info
+        run_info = {
+            "run_id": run_id,
+            "seed": run_args["seed"],
+            "elapsed_time": elapsed_time,
+            "simulation_end_time": sim.sim.env.now,
+            "run_folder": str(run_folder),
+            **run_args,
+        }
+
+        # Save run info
+        with open(run_folder / "run_info.yaml", "w") as f:
+            yaml.dump(run_info, f)
+
+        return run_info
+
+    def _save_experiment_summary(self, total_time: float):
+        """Save experiment summary and aggregated results."""
+        # Create summary
+        summary = {
+            "experiment_info": {
+                "number_of_runs": self.number_of_runs,
+                "total_experiment_time": total_time,
+                "average_run_time": sum(r["elapsed_time"] for r in self.results)
+                / len(self.results),
+                "save_folder_path": str(self.save_folder_path),
+                "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
+            },
+            "simulation_parameters": self.simulation_args,
+            "runs_summary": self.results,
+        }
+
+        # Save experiment summary
+        with open(self.save_folder_path / "experiment_summary.yaml", "w") as f:
+            yaml.dump(summary, f)
+
+        # Create results DataFrame
+        results_df = pd.DataFrame(self.results)
+        results_df.to_csv(self.save_folder_path / "experiment_results.csv", index=False)
+
+        # Print summary statistics
+        self._print_summary_stats(results_df)
+
+    def _print_summary_stats(self, results_df: pd.DataFrame):
+        """Print summary statistics."""
+        print("\n" + "=" * 50)
+        print("EXPERIMENT SUMMARY")
+        print("=" * 50)
+        print(f"Number of runs: {len(results_df)}")
+        print(
+            f"Average elapsed time: {results_df['elapsed_time'].mean():.4f} ± {results_df['elapsed_time'].std():.4f} seconds"
+        )
+        print(f"Min elapsed time: {results_df['elapsed_time'].min():.4f} seconds")
+        print(f"Max elapsed time: {results_df['elapsed_time'].max():.4f} seconds")
+        print(f"Results saved to: {self.save_folder_path}")
+        print("=" * 50)
+
+
+def main():
+    """Main execution function."""
+    parser = create_experiment_parser()
+    args = parser.parse_args()
+
+    # Determine paths
+    sim_path = args.sim_path or Path(__file__).resolve().parent
+    timestamp = datetime.now().strftime("%y%m%d%H%M")
+    save_folder_path = (
+        args.save_folder_path or sim_path / "experiments" / f"{timestamp}_{args.name}"
     )
-    parser.add_argument(
-        "--monitor-interval",
-        type=int,
-        default=50000,
-        help="Interval for monitor prints",
-    )
-    parser.add_argument(
-        "--log-interval", type=int, default=48, help="Interval between vars log"
-    )
-    parser.add_argument(
-        "--warmup",
-        type=int,
-        default=100000,
-        help="Warmup for start logging results",
-    )
-    parser.add_argument(
-        "--monitor-warmup", type=int, default=0, help="Warmup for monitor prints"
-    )
+    resource_path = args.resources or sim_path / "config/resources.yaml"
+    products_path = args.products or sim_path / "config/products.yaml"
 
-    parser.add_argument(
-        "--cb-size", type=int, default=2000, help="Constraint buffer size"
-    )
-    parser.add_argument(
-        "--schedule-interval", type=int, default=72, help="Schedule interval"
-    )
+    # Load configurations
+    try:
+        resources_cfg = load_config(resource_path)
+        products_cfg = load_config(products_path)
+    except FileNotFoundError as e:
+        print(f"Configuration file not found: {e}")
+        return 1
+    except Exception as e:
+        print(f"Error loading configuration: {e}")
+        return 1
 
-    parser.add_argument(
-        "--resources", default=None, type=str, help="Resouce config yaml file path"
-    )
+    # Extract simulation arguments
+    simulation_args = extract_simulation_args(args)
 
-    parser.add_argument(
-        "--products", default=None, type=str, help="Product config yaml file path"
-    )
+    # Create and run experiment
+    try:
+        experiment = ExperimentRunner(
+            resources_cfg=resources_cfg,
+            products_cfg=products_cfg,
+            simulation_args=simulation_args,
+            number_of_runs=args.number_of_runs,
+            save_folder_path=save_folder_path,
+            sim_path=sim_path,
+        )
 
-    parser.add_argument("--seed", type=int, default=None, help="Random seed")
+        experiment.run_experiment()
+        return 0
 
-    return parser.parse_args()
-
-
-def order_selection_callback():
-    def order_selection(store: DBR_stores, resource):
-        orders: List[ProductionOrder] = store.resource_input[resource].items
-
-        for id, productionOrder in enumerate(orders):
-            ahead_orders: List[ProductionOrder] = []
-            for resource_ in store.resources.keys():
-                ahead_orders.extend(store.resource_input[resource_].items)
-                ahead_orders.extend(store.resource_output[resource_].items)
-                ahead_orders.extend(store.resource_transport[resource_].items)
-                ahead_orders.extend(store.resource_processing[resource_].items)
-
-            product = productionOrder.product
-            released = productionOrder.released
-            ahead_quantity = [
-                order.quantity
-                for order in ahead_orders
-                if order.released < released and order.product == product
-            ]
-            orders[id].priority = (
-                sum(ahead_quantity) + store.finished_goods[product].level
-            ) / store.shipping_buffer[product]
-
-        order = sorted(orders, key=lambda x: x.priority)[0]
-        return order.id
-
-    return order_selection
+    except KeyboardInterrupt:
+        print("\nExperiment interrupted by user")
+        return 1
+    except Exception as e:
+        print(f"Experiment failed: {e}")
+        return 1
 
 
 if __name__ == "__main__":
-    args = parse_args()
-
-    sim_path = Path(__file__).resolve().parent
-    # Load YAML config files
-    if args.resources:
-        resource_path = args.resources
-    else:
-        resource_path = sim_path / "config/resources.yaml"
-    with open(resource_path, "r") as file:
-        resources_cfg = yaml.safe_load(file)
-
-    if args.products:
-        resource_path = args.products
-    else:
-        products_path = sim_path / "config/products.yaml"
-    with open(products_path, "r") as file:
-        products_cfg = yaml.safe_load(file)
-
-    start_time = time()
-
-    # Instantiate and run simulation
-    sim = Environment(
-        run_until=args.run_until,
-        resources_cfg=resources_cfg,
-        products_cfg=products_cfg,
-        monitor_interval=args.monitor_interval,
-        log_interval=args.log_interval,
-        monitor_warmup=args.monitor_warmup,
-        warmup=args.warmup,
-        seed=args.seed,
-        stores=DBR_stores,
-        scheduler=DBR_MTA,
-        scheduler_kwargs={
-            "schedule_interval": args.schedule_interval,
-            "constraint_buffer_size": args.cb_size,
-        },
-        outbound_kwargs={"delivery_mode": "instantly"},
-        production_kwargs={"order_selection_fn": order_selection_callback()},
-    )
-
-    sim.run_simulation()
-
-    end_time = time()
-    elapsed_time = end_time - start_time
-    print(f"Elapsed time: {elapsed_time:.4f} seconds")
-
-    df_products = sim.stores.log_products.to_dataframe()
-    df_products.to_csv(sim_path / "data/products.csv", index=False)
-    df_resources = sim.stores.log_resources.to_dataframe()
-    df_resources.to_csv(sim_path / "data/resources.csv", index=False)
-    sim.save_parameters(sim_path / "data")
-
+    exit(main())

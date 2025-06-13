@@ -1,31 +1,32 @@
-import argparse
 from pathlib import Path
 from time import time
-from typing import List
-import numpy as np
+from typing import List, Optional, Dict, Any, Callable
 
 import yaml
 from scheduler import DBR_MTA
 from stores import DBR_stores
 
 from rlsim.engine.control import ProductionOrder
-from rlsim.environment import Environment
+from rlsim.environment import Environment, load_config
+from cli_config import create_simulation_parser, extract_simulation_args
 
 
 class SimulationDBR:
+    """Simple wrapper for Environment class with DBR-specific components."""
+
     def __init__(
         self,
-        run_until,
-        resources_cfg,
-        products_cfg,
-        monitor_interval,
-        log_interval,
-        monitor_warmup,
-        warmup,
-        seed,
-        schedule_interval,
-        constraint_buffer_size,
-        ccr_release_limit,
+        run_until: int,
+        resources_cfg: Dict[str, Any],
+        products_cfg: Dict[str, Any],
+        monitor_interval: int = 50000,
+        log_interval: int = 48,
+        monitor_warmup: int = 0,
+        warmup: int = 100000,
+        seed: Optional[int] = None,
+        schedule_interval: int = 72,
+        constraint_buffer_size: float = float("inf"),
+        ccr_release_limit: float = float("inf"),
     ):
         self.sim = Environment(
             run_until=run_until,
@@ -44,34 +45,51 @@ class SimulationDBR:
                 "ccr_release_limit": ccr_release_limit,
             },
             outbound_kwargs={"delivery_mode": "instantly"},
-            production_kwargs={"order_selection_fn": self._order_selection_callback()},
+            production_kwargs={"order_selection_fn": self._create_order_selection_fn()},
         )
 
-    def run_simulation(self):
+    def run_simulation(self) -> float:
+        """Run the simulation and return elapsed time."""
         start_time = time()
-
         self.sim.run_simulation()
-
-        end_time = time()
-        elapsed_time = end_time - start_time
+        elapsed_time = time() - start_time
         print(f"Elapsed time: {elapsed_time:.4f} seconds")
+        return elapsed_time
 
-    def save_logs(self, sim_path):
-        print(f"Saving logs to {sim_path}/data")
+    def save_logs(self, sim_path: Path):
+        """Save simulation logs to CSV files."""
+        if not isinstance(sim_path, Path):
+            sim_path = Path(sim_path)
+
+        data_path = sim_path / "data"
+        data_path.mkdir(parents=True, exist_ok=True)
+
+        print(f"Saving logs to {data_path}")
         df_products = self.sim.stores.log_products.to_dataframe()
-        df_products.to_csv(sim_path / "data/products.csv", index=False)
+        df_products.to_csv(data_path / "products.csv", index=False)
+
         df_resources = self.sim.stores.log_resources.to_dataframe()
-        df_resources.to_csv(sim_path / "data/resources.csv", index=False)
+        df_resources.to_csv(data_path / "resources.csv", index=False)
 
-    def save_params(self, sim_path):
-        print(f"Saving params to {sim_path}/data")
-        self.sim.save_parameters(sim_path / "data")
+    def save_params(self, sim_path: Path):
+        """Save simulation parameters."""
+        if not isinstance(sim_path, Path):
+            sim_path = Path(sim_path)
 
-    def _order_selection_callback(self):
-        def order_selection(store: DBR_stores, resource):
+        data_path = sim_path / "data"
+        data_path.mkdir(parents=True, exist_ok=True)
+
+        print(f"Saving params to {data_path}")
+        self.sim.save_parameters(data_path)
+
+    def _create_order_selection_fn(self) -> Callable:
+        """Create the DBR order selection function."""
+
+        def order_selection(store: DBR_stores, resource) -> int:
             orders: List[ProductionOrder] = store.resource_input[resource].items
 
-            for id, productionOrder in enumerate(orders):
+            for id, production_order in enumerate(orders):
+                # Get all orders ahead in the system
                 ahead_orders: List[ProductionOrder] = []
                 for resource_ in store.resources.keys():
                     ahead_orders.extend(store.resource_input[resource_].items)
@@ -79,113 +97,54 @@ class SimulationDBR:
                     ahead_orders.extend(store.resource_transport[resource_].items)
                     ahead_orders.extend(store.resource_processing[resource_].items)
 
-                product = productionOrder.product
-                released = productionOrder.released
+                product = production_order.product
+                released = production_order.released
+
+                # Calculate quantity of orders ahead for same product
                 ahead_quantity = [
                     order.quantity
                     for order in ahead_orders
                     if order.released < released and order.product == product
                 ]
+
+                # Calculate priority
                 orders[id].priority = (
                     sum(ahead_quantity) + store.finished_goods[product].level
                 ) / store.shipping_buffer[product]
 
-            order = sorted(orders, key=lambda x: x.priority)[0]
-            return order.id
+            # Return order with lowest priority
+            selected_order = min(orders, key=lambda x: x.priority)
+            return selected_order.id
 
         return order_selection
 
 
-def parse_args():
-    parser = argparse.ArgumentParser(description="Run simulation environment")
+def main():
+    """Main execution function."""
+    parser = create_simulation_parser()
+    args = parser.parse_args()
 
-    parser.add_argument(
-        "--run-until", type=int, default=200001, help="Simulation end time"
-    )
-    parser.add_argument(
-        "--monitor-interval",
-        type=int,
-        default=50000,
-        help="Interval for monitor prints",
-    )
-    parser.add_argument(
-        "--log-interval", type=int, default=48, help="Interval between vars log"
-    )
-    parser.add_argument(
-        "--warmup",
-        type=int,
-        default=100000,
-        help="Warmup for start logging results",
-    )
-    parser.add_argument(
-        "--monitor-warmup", type=int, default=0, help="Warmup for monitor prints"
-    )
+    # Determine paths
+    sim_path = args.sim_path or Path(__file__).resolve().parent
+    resource_path = args.resources or sim_path / "config/resources.yaml"
+    products_path = args.products or sim_path / "config/products.yaml"
 
-    parser.add_argument(
-        "--cb-size", type=int, default=2000, help="Constraint buffer size"
-    )
-    parser.add_argument(
-        "--schedule-interval", type=int, default=72, help="Schedule interval"
-    )
+    # Load configurations
+    resources_cfg = load_config(resource_path)
+    products_cfg = load_config(products_path)
 
-    parser.add_argument(
-        "--ccr-release-limit", type=int, default=np.inf, help="Limit to release orders"
-    )
+    # Extract simulation arguments
+    simulation_args = extract_simulation_args(args)
 
-    parser.add_argument(
-        "--resources", default=None, type=str, help="Resouce config yaml file path"
-    )
-
-    parser.add_argument(
-        "--products", default=None, type=str, help="Product config yaml file path"
-    )
-
-    parser.add_argument("--sim-path", default=None, type=str, help="Simulation path")
-
-    parser.add_argument("--seed", type=int, default=None, help="Random seed")
-
-    return parser.parse_args()
-
-
-if __name__ == "__main__":
-    args = parse_args()
-
-    if args.sim_path:
-        sim_path = args.sim_path
-    else:
-        sim_path = Path(__file__).resolve().parent
-
-    if args.resources:
-        resource_path = args.resources
-    else:
-        resource_path = sim_path / "config/resources.yaml"
-    with open(resource_path, "r") as file:
-        resources_cfg = yaml.safe_load(file)
-
-    if args.products:
-        resource_path = args.products
-    else:
-        products_path = sim_path / "config/products.yaml"
-    with open(products_path, "r") as file:
-        products_cfg = yaml.safe_load(file)
-
-    start_time = time()
-
-    # Instantiate and run simulation
+    # Create and run simulation
     sim = SimulationDBR(
-        run_until=args.run_until,
-        resources_cfg=resources_cfg,
-        products_cfg=products_cfg,
-        monitor_interval=args.monitor_interval,
-        log_interval=args.log_interval,
-        monitor_warmup=args.monitor_warmup,
-        warmup=args.warmup,
-        seed=args.seed,
-        schedule_interval=args.schedule_interval,
-        constraint_buffer_size=args.cb_size,
-        ccr_release_limit=args.ccr_release_limit,
+        resources_cfg=resources_cfg, products_cfg=products_cfg, **simulation_args
     )
 
     sim.run_simulation()
     sim.save_logs(sim_path)
     sim.save_params(sim_path)
+
+
+if __name__ == "__main__":
+    main()
