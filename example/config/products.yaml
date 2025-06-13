@@ -73,7 +73,7 @@ produto01:
       params:
       - 63
     freq:
-      dist: earlang
+      dist: erlang
       params:
       - 10
       - 5.77
@@ -166,7 +166,7 @@ produto02:
       params:
       - 63
     freq:
-      dist: earlang
+      dist: erlang
       params:
       - 10
       - 7.07
@@ -352,7 +352,7 @@ produto04:
       params:
       - 63
     freq:
-      dist: earlang
+      dist: erlang
       params:
       - 10
       - 5.77
@@ -445,7 +445,7 @@ produto05:
       params:
       - 63
     freq:
-      dist: earlang
+      dist: erlang
       params:
       - 10
       - 5.0
@@ -538,7 +538,7 @@ produto06:
       params:
       - 63
     freq:
-      dist: earlang
+      dist: erlang
       params:
       - 10
       - 7.07
@@ -631,7 +631,7 @@ produto07:
       params:
       - 63
     freq:
-      dist: earlang
+      dist: erlang
       params:
       - 10
       - 5.0
@@ -898,7 +898,7 @@ produto09:
       params:
       - 63
     freq:
-      dist: earlang
+      dist: erlang
       params:
       - 10
       - 5.0
@@ -1036,7 +1036,7 @@ produto10:
       params:
       - 63
     freq:
-      dist: earlang
+      dist: erlang
       params:
       - 10
       - 7.07

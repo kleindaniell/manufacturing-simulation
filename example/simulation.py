@@ -5,12 +5,12 @@ from typing import List
 import simpy
 import yaml
 
-from rlsim.control import ProductionOrder, Stores
-from rlsim.inbound import Inbound
-from rlsim.monitor import Monitor
-from rlsim.outbound import Outbound
-from rlsim.production import Production
-from rlsim.simple_scheduler import SimpleScheduler
+from rlsim.engine.control import ProductionOrder, Stores
+from rlsim.engine.inbound import Inbound
+from rlsim.engine.monitor import Monitor
+from rlsim.engine.outbound import Outbound
+from rlsim.engine.production import Production
+from rlsim.engine.scheduler import Scheduler
 
 
 class Simulation:
@@ -19,8 +19,6 @@ class Simulation:
         run_until: int,
         resources_cfg: dict,
         products_cfg: dict,
-        schedule_interval: int,
-        set_constraint: int = None,
         monitor_interval: int = 0,
         warmup: bool = False,
         seed: int = None,
@@ -35,17 +33,14 @@ class Simulation:
         self.warmup = warmup
         self.run_until = run_until
         self.monitor_interval = monitor_interval
-        self.schedule_interval = schedule_interval
 
         self.stores = Stores(self.env, self.resources_config, self.products_config)
-        self.monitor = Monitor(self.stores, self.monitor_interval)
+        self.monitor = Monitor(self.stores, self.monitor_interval, show_print=True)
         callback = self.order_selection_callback()
-        self.production = Production(self.stores, warmup=0, order_selection_fn=callback)
-        self.scheduler = SimpleScheduler(self.stores, self.schedule_interval)
-        self.inboud = Inbound(self.stores, self.products_config)
-        self.outbound = Outbound(
-            self.stores, self.products_config, delivery_mode="asReady"
-        )
+        self.production = Production(self.stores, order_selection_fn=callback)
+        self.scheduler = Scheduler(self.stores)
+        self.inboud = Inbound(self.stores)
+        self.outbound = Outbound(self.stores, delivery_mode="asReady")
 
     def run_simulation(self):
         print(self.run_until)
@@ -70,14 +65,12 @@ if __name__ == "__main__":
         products_cfg = yaml.safe_load(file)
 
     run_until = 2400
-    schedule_interval = 72
-    monitor_interval = 720
+    monitor_interval = 2
 
     sim = Simulation(
         run_until=run_until,
         resources_cfg=resources_cfg,
         products_cfg=products_cfg,
-        schedule_interval=schedule_interval,
         monitor_interval=monitor_interval,
     )
 
