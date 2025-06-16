@@ -1,6 +1,6 @@
 from pathlib import Path
-import random
-from typing import Type, Union, Dict, Any
+from typing import Any, Dict, Type, Union
+
 import simpy
 import yaml
 
@@ -144,7 +144,6 @@ class Environment:
         self.env.run(until=self.run_until)
 
     def save_parameters(self, save_folder: Union[str, Path]):
-
         if not isinstance(save_folder, Path):
             save_folder = Path(save_folder)
 
