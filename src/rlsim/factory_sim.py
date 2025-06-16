@@ -1,13 +1,15 @@
 from abc import ABC
-from typing import Callable, Dict, List, Tuple, Any
+from typing import Any, Callable, Dict, List, Tuple
 
 import numpy as np
+import pandas as pd
 import simpy
 
-from rlsim.engine.metrics import ProductMetrics, ResourceMetrics
+from rlsim.engine.cli_config import create_simulation_parser
+from rlsim.engine.logs import ProductLogs, ResourceLogs
 from rlsim.engine.orders import DemandOrder, ProductionOrder
 from rlsim.engine.stores import SimulationStores
-from rlsim.engine.utils import DistributionGenerator
+from rlsim.engine.utils import DistributionGenerator, load_yaml
 
 
 class FactorySimulation(ABC):
@@ -22,50 +24,65 @@ class FactorySimulation(ABC):
     ):
         self.env = simpy.Environment()
         self.config: Dict[str, Any] = config
-        self.resources: Dict[str, dict] = resources
-        self.products: Dict[str, dict] = products
+        self.resources_config: Dict[str, dict] = resources
+        self.products_config: Dict[str, dict] = products
         self.save_logs = save_logs
         self.seed = seed
         self.queue_order_selection = queue_order_selection
 
-        self.stores = SimulationStores(self.env, self.products, self.resources)
+        self.run_until = self.config.get("run_until", None)
+        if self.run_until is None:
+            raise ValueError("run_until must be specified")
+        self.warmup = self.config.get("warmup", 0)
+        self.monitor_warmup = self.config.get("monitor_warmup", self.warmup)
+        self.monitor_interval = self.config.get(
+            "monitor_interval", int(self.run_until / 4)
+        )
+        self.delivery_mode = self.config.get("delivery_mode", "asReady")
+        self.log_interval = self.config.get("log_interval", 72)
 
+        self.stores = SimulationStores(
+            self.env, self.products_config, self.resources_config
+        )
+
+        # self._print_vars()
         self._start_resources()
         self._start_products()
         self._run_scheduler()
+        self._run_monitor()
 
         self.dist = DistributionGenerator(self.seed)
 
-        self.log_products = ProductMetrics(self.products.keys())
-        self.log_resources = ResourceMetrics(self.resources.keys())
-
-        self.total_wip_log: List[Tuple[float, float]] = []
+        self.log_product = ProductLogs(self.products_config.keys())
+        self.log_resource = ResourceLogs(self.resources_config.keys())
 
         if self.save_logs:
             self._register_log()
+
+    def _print_vars(self):
+        for key in self.config:
+            print(f"{key} - {self.config[key]}")
 
     def _register_log(self) -> None:
         def register_product_log():
             yield self.env.timeout(self.warmup)
             while True:
                 total_wip = 0
-                for product in self.products.keys():
-                    self.log_products.fg_log[product].append(
+                for product in self.products_config.keys():
+                    self.log_product.fg_log[product].append(
                         (self.env.now, self.stores.finished_goods[product].level)
                     )
 
                     wip = self.stores.wip[product].level
-                    self.log_products.wip_log[product].append((self.env.now, wip))
+                    self.log_product.wip_log[product].append((self.env.now, wip))
                     total_wip += wip
-
-                self.total_wip_log.append((self.env.now, total_wip))
 
                 yield self.env.timeout(self.log_interval)
 
         self.env.process(register_product_log())
 
     def _generate_demand_orders(self, product):
-        product_config = self.products[product]
+        product_config = self.products_config[product]
 
         freq_dist = product_config["demand"]["freq"].get("dist")
         freq_params = product_config["demand"]["freq"].get("params")
@@ -89,6 +106,7 @@ class FactorySimulation(ABC):
                 quantity=quantity,
                 duedate=duedate,
                 arived=self.env.now,
+                delivery_mode=self.delivery_mode,
             )
             # print(f"{self.env.now} - {demandOrder}")
             yield self.stores.inbound_demand_orders.put(demandOrder)
@@ -114,9 +132,11 @@ class FactorySimulation(ABC):
     def _release_order(self, productionOrder: ProductionOrder):
         product = productionOrder.product
 
-        last_process = len(self.products[product]["processes"])
-        first_process = next(iter(self.products[product]["processes"]))
-        first_resource = self.products[product]["processes"][first_process]["resource"]
+        last_process = len(self.products_config[product]["processes"])
+        first_process = next(iter(self.products_config[product]["processes"]))
+        first_resource = self.products_config[product]["processes"][first_process][
+            "resource"
+        ]
 
         productionOrder.process_total = last_process
         productionOrder.process_finished = 0
@@ -127,56 +147,51 @@ class FactorySimulation(ABC):
         # Add productionOrder to first resource input
         yield self.stores.resource_input[first_resource].put(productionOrder)
 
-        self.log_products.released[product].append(
+        self.log_product.released[product].append(
             (self.env.now, productionOrder.quantity)
         )
 
     def _start_resources(self) -> None:
-        self.resources: Dict[str, simpy.Resource] = {}
         self.machine_down: Dict[str, simpy.Event] = {}
+        self.resources: Dict[str, simpy.Resource] = {}
+        for resource in self.resources_config:
 
-        for resource in self.resources:
-            resource_config: dict = self.resources.get(resource)
+            resource_config: dict = self.resources_config.get(resource)
             quantity = resource_config.get("quantity", 1)
 
             self.resources[resource] = simpy.Resource(self.env, quantity)
 
             self.machine_down[resource] = self.env.event()
             self.machine_down[resource].succeed()
-
-            if self.resources[resource].get("tbf", None) and self.resources[
-                resource
-            ].get("ttr", None):
+            if self.resources_config[resource].get(
+                "tbf", None
+            ) and self.resources_config[resource].get("ttr", None):
                 self.env.process(self._breakdowns(resource))
 
             self.env.process(self._transportation(resource))
             self.env.process(self._production_system(resource))
 
     def _breakdowns(self, resource):
-        try:
-            while True:
-                tbf_dist = self.resources[resource]["tbf"].get("dist", "constant")
-                tbf_params = self.resources[resource]["tbf"].get("params", [0])
-                tbf = self.dist.random_number(tbf_dist, tbf_params)
+        while True:
+            tbf_dist = self.resources_config[resource]["tbf"].get("dist", "constant")
+            tbf_params = self.resources_config[resource]["tbf"].get("params", [0])
+            tbf = self.dist.random_number(tbf_dist, tbf_params)
 
-                ttr_dist = self.resources[resource]["ttr"].get("dist", "constant")
-                ttr_params = self.resources[resource]["ttr"].get("params", [0])
-                ttr = self.dist.random_number(ttr_dist, ttr_params)
+            ttr_dist = self.resources_config[resource]["ttr"].get("dist", "constant")
+            ttr_params = self.resources_config[resource]["ttr"].get("params", [0])
+            ttr = self.dist.random_number(ttr_dist, ttr_params)
 
-                yield self.env.timeout(tbf)
-                self.machine_down[resource] = self.env.event()
-                breakdown_start = self.env.now
-                yield self.env.timeout(ttr)
-                self.machine_down[resource].succeed()
-                breakdown_end = self.env.now
+            yield self.env.timeout(tbf)
+            self.machine_down[resource] = self.env.event()
+            breakdown_start = self.env.now
+            yield self.env.timeout(ttr)
+            self.machine_down[resource].succeed()
+            breakdown_end = self.env.now
 
-                if self.env.now >= self.warmup:
-                    self.log_resources.breakdowns[resource].append(
-                        (breakdown_start, round(breakdown_end - breakdown_start, 6))
-                    )
-
-        except ValueError:
-            pass
+            if self.env.now >= self.warmup:
+                self.log_resource.breakdowns[resource].append(
+                    (breakdown_start, round(breakdown_end - breakdown_start, 6))
+                )
 
     def _transportation(self, resource):
         while True:
@@ -191,10 +206,10 @@ class FactorySimulation(ABC):
                 yield self.stores.resource_transport[resource].get()
                 yield self.stores.finished_goods[product].put(productionOrder.quantity)
 
-                self.log_products.flow_time[product].append(
+                self.log_product.flow_time[product].append(
                     (self.env.now, self.env.now - productionOrder.released)
                 )
-                yield self.wip[product].get(productionOrder.quantity)
+                yield self.stores.wip[product].get(productionOrder.quantity)
 
             else:
                 process_id = productionOrder.process_finished
@@ -233,11 +248,15 @@ class FactorySimulation(ABC):
             if last_product == product and last_process == process:
                 setup_time = 0
             else:
-                setup_dist = self.resources[resource]["setup"].get("dist", "constant")
-                setup_params = self.resources[resource]["setup"].get("params", [0])
+                setup_dist = self.resources_config[resource]["setup"].get(
+                    "dist", "constant"
+                )
+                setup_params = self.resources_config[resource]["setup"].get(
+                    "params", [0]
+                )
                 setup_time = self.dist.random_number(setup_dist, setup_params)
                 if self.env.now >= self.warmup:
-                    self.log_resources.setups[resource].append(
+                    self.log_resource.setups[resource].append(
                         (self.env.now, setup_time)
                     )
 
@@ -274,7 +293,7 @@ class FactorySimulation(ABC):
                 yield self.stores.resource_finished[resource].put(productionOrder)
                 yield self.stores.resource_output[resource].put(productionOrder)
                 if self.env.now >= self.warmup:
-                    self.log_resources.utilization[resource].append(
+                    self.log_resource.utilization[resource].append(
                         (self.env.now, round(end_time - start_time, 6))
                     )
 
@@ -298,13 +317,13 @@ class FactorySimulation(ABC):
         product = demandOrder.product
         if self.stores.finished_goods[product].level >= quantity:
             yield self.stores.finished_goods[product].get(quantity)
-            if not self.stores.training and self.stores.warmup < self.env.now:
-                self.log_products.delivered_ontime[product].append(
+            if self.save_logs and self.warmup < self.env.now:
+                self.log_product.delivered_ontime[product].append(
                     (self.env.now, quantity)
                 )
 
-        elif self.stores.warmup < self.env.now:
-            self.log_products.lost_sales[product].append((self.env.now, quantity))
+        elif self.warmup < self.env.now:
+            self.log_product.lost_sales[product].append((self.env.now, quantity))
 
     def _delivery_as_ready(self, demandOrder: DemandOrder):
         quantity = demandOrder.quantity
@@ -315,23 +334,23 @@ class FactorySimulation(ABC):
         yield self.stores.finished_goods[product].get(quantity)
         # check ontime or late
         demandOrder.delivered = self.env.now
-        if not self.stores.training and self.stores.warmup < self.env.now:
+        if self.save_logs and self.warmup < self.env.now:
             if demandOrder.delivered <= duedate:
-                self.log_products.delivered_ontime[product].append(
+                self.log_product.delivered_ontime[product].append(
                     (self.env.now, quantity)
                 )
-                self.log_products.earliness[product].append(
+                self.log_product.earliness[product].append(
                     (self.env.now, demandOrder.duedate - self.env.now)
                 )
             else:
-                self.log_products.delivered_late[product].append(
+                self.log_product.delivered_late[product].append(
                     (self.env.now, quantity)
                 )
-                self.log_products.tardiness[product].append(
+                self.log_product.tardiness[product].append(
                     (self.env.now, self.env.now - duedate)
                 )
 
-        self.log_products.lead_time[product].append(
+        self.log_product.lead_time[product].append(
             (self.env.now, self.env.now - demandOrder.arived)
         )
 
@@ -350,33 +369,59 @@ class FactorySimulation(ABC):
 
             # Check ontime or late
             demandOrder.delivered = self.env.now
-            if not self.stores.training and self.stores.warmup < self.env.now:
+            if self.save_logs and self.warmup < self.env.now:
                 if demandOrder.delivered <= duedate:
-                    self.log_products.delivered_ontime[product].append(
+                    self.log_product.delivered_ontime[product].append(
                         (self.env.now, quantity)
                     )
-                    self.log_products.earliness[product].append(
+                    self.log_product.earliness[product].append(
                         (self.env.now, duedate - self.env.now)
                     )
                 else:
-                    self.log_products.delivered_late[product].append(
+                    self.log_product.delivered_late[product].append(
                         (self.env.now, quantity)
                     )
-                    self.log_products.tardiness[product].append(
+                    self.log_product.tardiness[product].append(
                         (self.env.now, self.env.now - duedate)
                     )
 
-                self.log_products.lead_time[product].append(
+                self.log_product.lead_time[product].append(
                     (self.env.now, self.env.now - demandOrder.arived)
                 )
 
         self.env.process(_delivey_order(demandOrder))
 
+    def _run_monitor(self):
+        self.env.process(self._monitor())
+
+    def _monitor(self):
+        yield self.env.timeout(self.monitor_warmup)
+        while True:
+            snapshot = self.stores.simulation_snapshot()
+            print(self.env.now)
+            print(snapshot)
+            print("\n")
+            products = self.log_product.calculate_metrics()
+            print(products)
+            resources = self.log_resource.calculate_metrics()
+            print(resources)
+
+            yield self.env.timeout(self.monitor_interval)
+
     def _start_products(self):
-        for product in self.products.keys():
+        for product in self.products_config.keys():
             self.env.process(self._generate_demand_orders(product))
             self.env.process(self._delivery_orders(product))
 
     def run_simulation(self):
-        print(self.run_until)
         self.env.run(until=self.run_until)
+
+
+if __name__ == "__main__":
+
+    config = load_yaml("src/rlsim/config/config.yaml")
+    products = load_yaml("src/rlsim/config/products.yaml")
+    resources = load_yaml("src/rlsim/config/resources.yaml")
+
+    sim = FactorySimulation(config, resources, products, True, 123)
+    sim.run_simulation()

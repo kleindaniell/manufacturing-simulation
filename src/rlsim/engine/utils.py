@@ -1,7 +1,8 @@
 import random
-from typing import List
-
+from typing import List, Union, Any
+from pathlib import Path
 import numpy as np
+import yaml
 
 
 class Distribution:
@@ -40,7 +41,7 @@ class DistributionGenerator:
     def __init__(self, seed):
         self.rng = random.Random(seed)
 
-    def random_number(self, distribution: str, params: List[float, float]) -> float:
+    def random_number(self, distribution: str, params: List[Any]) -> float:
         if distribution == "constant":
             value = params[0]
         elif distribution == "uniform":
@@ -64,3 +65,16 @@ class DistributionGenerator:
             raise ValueError(f"Unknowh distribution type {distribution}")
 
         return np.float32(value)
+
+
+def load_yaml(yaml_file_path: Union[str, Path]):
+    """Load configuration from YAML files"""
+    if not isinstance(yaml_file_path, Path):
+        yaml_file_path = Path(yaml_file_path)
+
+    if yaml_file_path.is_file():
+        with open(yaml_file_path, "r") as file:
+            file_data = yaml.safe_load(file)
+            return file_data
+    else:
+        raise ValueError("File path not provided")

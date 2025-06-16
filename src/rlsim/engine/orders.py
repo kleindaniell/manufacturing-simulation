@@ -46,7 +46,7 @@ class DemandOrder:
     duedate: Optional[float] = None
     arived: Optional[float] = None
     delivered: Optional[int] = None
-    delivery_mode: Literal["asReady", "onDue", "instantly"]
+    delivery_mode: Literal["asReady", "onDue", "instantly"] = "asReady"
     id: int = field(init=False)
 
     _next_id = 1
