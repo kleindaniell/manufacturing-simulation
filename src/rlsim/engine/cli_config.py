@@ -17,6 +17,11 @@ def add_general_args(parser: argparse.ArgumentParser) -> argparse.ArgumentParser
     general.add_argument(
         "--log-interval", type=int, default=48, help="Interval between vars log"
     )
+    general.add_argument(
+        "--save-logs",
+        action="store_false",
+        help="Flat to register logs on simulation",
+    )
     general.add_argument("--seed", type=int, default=None, help="Random seed")
     return parser
 

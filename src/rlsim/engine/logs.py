@@ -131,7 +131,7 @@ class ResourceLogs:
                     df = df_tmp.copy() if df.empty else pd.concat([df, df_tmp])
         return df.reset_index(drop=True)
 
-    def calculate_metrics(self) -> Tuple[pd.DataFrame, pd.DataFrame]:
+    def calculate_metrics(self) -> pd.DataFrame:
 
         logs = self.to_dataframe()
         df_result = pd.DataFrame()

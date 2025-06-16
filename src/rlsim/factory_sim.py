@@ -1,8 +1,7 @@
 from abc import ABC
-from typing import Any, Callable, Dict, List, Tuple
+from typing import Any, Callable, Dict, Literal
 
 import numpy as np
-import pandas as pd
 import simpy
 
 from rlsim.engine.cli_config import create_simulation_parser
@@ -10,6 +9,8 @@ from rlsim.engine.logs import ProductLogs, ResourceLogs
 from rlsim.engine.orders import DemandOrder, ProductionOrder
 from rlsim.engine.stores import SimulationStores
 from rlsim.engine.utils import DistributionGenerator, load_yaml
+
+from time import time
 
 
 class FactorySimulation(ABC):
@@ -19,6 +20,7 @@ class FactorySimulation(ABC):
         resources: dict,
         products: dict,
         save_logs: bool = True,
+        print_mode: Literal["status", "metrics", "all"] = "metrics",
         seed: int = None,
         queue_order_selection: Callable = None,
     ):
@@ -28,6 +30,7 @@ class FactorySimulation(ABC):
         self.products_config: Dict[str, dict] = products
         self.save_logs = save_logs
         self.seed = seed
+        self.print_mode = print_mode
         self.queue_order_selection = queue_order_selection
 
         self.run_until = self.config.get("run_until", None)
@@ -40,12 +43,12 @@ class FactorySimulation(ABC):
         )
         self.delivery_mode = self.config.get("delivery_mode", "asReady")
         self.log_interval = self.config.get("log_interval", 72)
+        self.save_logs = self.config.get("save_logs", save_logs)
 
         self.stores = SimulationStores(
             self.env, self.products_config, self.resources_config
         )
 
-        # self._print_vars()
         self._start_resources()
         self._start_products()
         self._run_scheduler()
@@ -58,10 +61,6 @@ class FactorySimulation(ABC):
 
         if self.save_logs:
             self._register_log()
-
-    def _print_vars(self):
-        for key in self.config:
-            print(f"{key} - {self.config[key]}")
 
     def _register_log(self) -> None:
         def register_product_log():
@@ -206,9 +205,10 @@ class FactorySimulation(ABC):
                 yield self.stores.resource_transport[resource].get()
                 yield self.stores.finished_goods[product].put(productionOrder.quantity)
 
-                self.log_product.flow_time[product].append(
-                    (self.env.now, self.env.now - productionOrder.released)
-                )
+                if self.save_logs and self.warmup < self.env.now:
+                    self.log_product.flow_time[product].append(
+                        (self.env.now, self.env.now - productionOrder.released)
+                    )
                 yield self.stores.wip[product].get(productionOrder.quantity)
 
             else:
@@ -350,9 +350,10 @@ class FactorySimulation(ABC):
                     (self.env.now, self.env.now - duedate)
                 )
 
-        self.log_product.lead_time[product].append(
-            (self.env.now, self.env.now - demandOrder.arived)
-        )
+        if self.save_logs and self.warmup < self.env.now:
+            self.log_product.lead_time[product].append(
+                (self.env.now, self.env.now - demandOrder.arived)
+            )
 
     def _delivery_on_duedate(self, demandOrder: DemandOrder):
         def _delivey_order(demandOrder: DemandOrder):
@@ -395,16 +396,42 @@ class FactorySimulation(ABC):
         self.env.process(self._monitor())
 
     def _monitor(self):
+        start_time = time()
         yield self.env.timeout(self.monitor_warmup)
         while True:
-            snapshot = self.stores.simulation_snapshot()
-            print(self.env.now)
-            print(snapshot)
+            end_time = time()
+            elapsed_time = end_time - start_time
+
             print("\n")
-            products = self.log_product.calculate_metrics()
-            print(products)
-            resources = self.log_resource.calculate_metrics()
-            print(resources)
+            print(self.env.now)
+            print(f"Elapsed time: {elapsed_time:.4f} seconds")
+            print("\n")
+            if self.print_mode == "all":
+                snapshot = self.stores.simulation_snapshot()
+                print(snapshot)
+                print("\n")
+                products = self.log_product.calculate_metrics()
+                print(products)
+                resources = self.log_resource.calculate_metrics()
+                if not resources.empty:
+                    resources.loc[:, "utilization"] = (
+                        resources.loc[:, "utilization"] / self.env.now
+                    )
+                print(resources)
+            elif self.print_mode == "metrics":
+                products = self.log_product.calculate_metrics()
+                print(products)
+                print("\n")
+                resources = self.log_resource.calculate_metrics()
+                if not resources.empty:
+                    resources.loc[:, "utilization"] = (
+                        resources.loc[:, "utilization"] / self.env.now
+                    )
+                print(resources)
+            elif self.print_mode == "status":
+                snapshot = self.stores.simulation_snapshot()
+                print(snapshot)
+                print("\n")
 
             yield self.env.timeout(self.monitor_interval)
 
@@ -419,9 +446,39 @@ class FactorySimulation(ABC):
 
 if __name__ == "__main__":
 
-    config = load_yaml("src/rlsim/config/config.yaml")
-    products = load_yaml("src/rlsim/config/products.yaml")
-    resources = load_yaml("src/rlsim/config/resources.yaml")
+    from pathlib import Path
 
-    sim = FactorySimulation(config, resources, products, True, 123)
+    parser = create_simulation_parser()
+    args = parser.parse_args()
+    args_dict = vars(args)
+
+    config_path = (
+        args_dict["config"]
+        if args_dict["config"] is not None
+        else Path("src/rlsim/config/config.yaml")
+    )
+
+    product_path = (
+        args_dict["products"]
+        if args_dict["products"] is not None
+        else Path("src/rlsim/config/products.yaml")
+    )
+
+    resource_path = (
+        args_dict["resources"]
+        if args_dict["resources"] is not None
+        else Path("src/rlsim/config/resources.yaml")
+    )
+
+    config = load_yaml(config_path)
+    products = load_yaml(product_path)
+    resources = load_yaml(resource_path)
+    sim = FactorySimulation(
+        config,
+        resources,
+        products,
+        save_logs=args_dict["save_logs"],
+        print_mode="metrics",
+        seed=123,
+    )
     sim.run_simulation()
