@@ -5,7 +5,6 @@ import numpy as np
 import pandas as pd
 
 
-@dataclass
 class ProductLogs:
     # Products Logs
     delivered_ontime: Dict[str, List[Tuple[float, float]]] = field(default_factory=dict)
@@ -19,7 +18,7 @@ class ProductLogs:
     fg_log: Dict[str, List[Tuple[float, float]]] = field(default_factory=dict)
     released: Dict[str, List[Tuple[float, float]]] = field(default_factory=dict)
 
-    def __init__(self, products):
+    def __init__(self, products, **kwargs):
         # Product Logs
         self.delivered_ontime = {p: [] for p in products}
         self.delivered_late = {p: [] for p in products}
@@ -32,6 +31,9 @@ class ProductLogs:
         self.fg_log = {p: [] for p in products}
         self.released = {p: [] for p in products}
 
+        for key, value in kwargs.items():
+            setattr(self, key, value)
+
     def to_dataframe(self) -> pd.DataFrame:
         """Convert logs to dataframes"""
 
@@ -39,13 +41,13 @@ class ProductLogs:
             columns=["time", "value", "variable", "product"],
         )
 
-        for fi in fields(self):
-            values: dict = getattr(self, fi.name)
+        for attr in self.__dict__.keys():
+            values: dict = getattr(self, attr)
 
             for product in values:
                 if len(values[product]) > 0:
                     df_tmp = pd.DataFrame(values[product], columns=["time", "value"])
-                    df_tmp["variable"] = fi.name
+                    df_tmp["variable"] = attr
                     df_tmp["product"] = product
                     logs_df = (
                         df_tmp.copy() if logs_df.empty else pd.concat([logs_df, df_tmp])
@@ -105,28 +107,30 @@ class ProductLogs:
         return df_result.fillna(0)
 
 
-@dataclass
 class ResourceLogs:
     utilization: Dict[str, List[Tuple[float, float]]] = field(default_factory=dict)
     breakdowns: Dict[str, List[Tuple[float, float]]] = field(default_factory=dict)
     setups: Dict[str, List[Tuple[float, float]]] = field(default_factory=dict)
 
-    def __init__(self, resources: List[str]):
+    def __init__(self, resources: List[str], **kwagrs):
         self.utilization = {r: [] for r in resources}
         self.breakdowns = {r: [] for r in resources}
         self.setups = {r: [] for r in resources}
+
+        for key, value in kwagrs.items():
+            setattr(self, key, value)
 
     def to_dataframe(self) -> pd.DataFrame:
         df = pd.DataFrame(
             columns=["time", "value", "variable", "resource"],
         )
-        for fi in fields(self):
-            values: dict = getattr(self, fi.name)
+        for attr in self.__dict__.keys():
+            values: dict = getattr(self, attr)
 
             for resource in values:
                 if len(values[resource]) > 0:
                     df_tmp = pd.DataFrame(values[resource], columns=["time", "value"])
-                    df_tmp["variable"] = fi.name
+                    df_tmp["variable"] = attr
                     df_tmp["resource"] = resource
                     df = df_tmp.copy() if df.empty else pd.concat([df, df_tmp])
         return df.reset_index(drop=True)
@@ -179,3 +183,25 @@ class ResourceLogs:
                     else pd.concat([df_result, df_var], axis=1)
                 )
         return df_result.fillna(0)
+
+
+class GeneralLogs:
+
+    def __init__(self, **kwargs):
+
+        for key, value in kwargs.items():
+            setattr(self, key, value)
+        print(self.__dict__)
+
+    def to_dataframe(self) -> pd.DataFrame:
+        df = pd.DataFrame(
+            columns=["time", "value", "variable"],
+        )
+        for attr in self.__dict__.keys():
+            values: dict = getattr(self, attr)
+
+            if len(values) > 0:
+                df_tmp = pd.DataFrame(values, columns=["time", "value"])
+                df_tmp["variable"] = attr
+                df = df_tmp.copy() if df.empty else pd.concat([df, df_tmp])
+        return df.reset_index(drop=True)

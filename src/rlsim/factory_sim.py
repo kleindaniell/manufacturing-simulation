@@ -1,4 +1,4 @@
-from abc import ABC
+from abc import ABC, abstractmethod
 from typing import Any, Callable, Dict, Literal
 
 import numpy as np
@@ -8,7 +8,7 @@ import json
 import yaml
 
 from rlsim.engine.cli_config import create_simulation_parser
-from rlsim.engine.logs import ProductLogs, ResourceLogs
+from rlsim.engine.logs import ProductLogs, ResourceLogs, GeneralLogs
 from rlsim.engine.orders import DemandOrder, ProductionOrder
 from rlsim.engine.stores import SimulationStores
 from rlsim.engine.utils import DistributionGenerator, load_yaml
@@ -25,6 +25,7 @@ class FactorySimulation(ABC):
         save_logs: bool = True,
         print_mode: Literal["status", "metrics", "all"] = "metrics",
         seed: int = None,
+        custom_logs: dict = None,
         queue_order_selection: Callable = None,
     ):
         self.config: Dict[str, Any] = config
@@ -32,6 +33,7 @@ class FactorySimulation(ABC):
         self.products_config: Dict[str, dict] = products
         self.seed = seed
         self.print_mode = print_mode
+        self.custom_logs = custom_logs
         self.queue_order_selection = queue_order_selection
 
         self.run_until = self.config.get("run_until", None)
@@ -68,6 +70,7 @@ class FactorySimulation(ABC):
         self._start_products()
         self._run_scheduler()
         self._run_monitor()
+        self._start_custom_process()
 
     def _init_random_generators(self) -> None:
         """Initialize random number generators for different purposes"""
@@ -77,11 +80,22 @@ class FactorySimulation(ABC):
 
     def _init_loggint(self) -> None:
         """Initialize logging components"""
-        self.log_product = ProductLogs(self.products_config.keys())
-        self.log_resource = ResourceLogs(self.resources_config.keys())
+        custom_logs = self._create_custom_logs()
+
+        product_custom_logs = custom_logs.get("products", {})
+        self.log_product = ProductLogs(
+            self.products_config.keys(), **product_custom_logs
+        )
+        resource_custom_logs = custom_logs.get("resources", {})
+        self.log_resource = ResourceLogs(
+            self.resources_config.keys(), **resource_custom_logs
+        )
+        general_custom_logs = custom_logs.get("general", {})
+        self.log_general = GeneralLogs(**general_custom_logs)
 
         if self.save_logs:
             self._register_log()
+            self._register_custom_logs()
 
     def _register_log(self) -> None:
         def register_product_log():
@@ -98,6 +112,14 @@ class FactorySimulation(ABC):
                 yield self.env.timeout(self.log_interval)
 
         self.env.process(register_product_log())
+
+    @abstractmethod
+    def _create_custom_logs(self):
+        pass
+
+    @abstractmethod
+    def _register_custom_logs(self):
+        pass
 
     def _start_products(self):
         for product in self.products_config.keys():
@@ -142,6 +164,7 @@ class FactorySimulation(ABC):
         self.env.process(self.scheduler())
 
     def scheduler(self):
+        print("====== running scheduler ========")
         while True:
             demandOrder: DemandOrder = yield self.stores.inbound_demand_orders.get()
             product = demandOrder.product
@@ -476,8 +499,9 @@ class FactorySimulation(ABC):
 
         resources = self.log_resource.calculate_metrics()
         if not resources.empty:
+            sim_elapsed_time = self.env.now - self.warmup
             resources.loc[:, "utilization"] = (
-                resources.loc[:, "utilization"] / self.env.now
+                resources.loc[:, "utilization"] / sim_elapsed_time
             )
             print("RESOURCE METRICS:")
             print(resources)
@@ -496,6 +520,8 @@ class FactorySimulation(ABC):
         products_log.to_csv(save_path / "products_log.csv", index=False)
         resources_log = self.log_resource.to_dataframe()
         resources_log.to_csv(save_path / "resources_log.csv", index=False)
+        general_log = self.log_general.to_dataframe()
+        general_log.to_csv(save_path / "general_log.csv", index=False)
 
     def save_params(self, save_folder_path: Path) -> None:
         """Save params to folder"""
@@ -528,6 +554,10 @@ class FactorySimulation(ABC):
         self.env.run(until=self.run_until)
         end_time = time()
         return end_time - start_time
+
+    @abstractmethod
+    def _start_custom_process(self):
+        pass
 
 
 if __name__ == "__main__":

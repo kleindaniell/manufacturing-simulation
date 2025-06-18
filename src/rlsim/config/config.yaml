@@ -1,8 +1,8 @@
 # Simulation config
-run_until: 20001
-warmup: 10000
+run_until: 2001
+warmup: 1000
 log_interval: 24
 monitor_warmup: 0
-monitor_interval: 5000
+monitor_interval: 500
 # Factory config
 delivery_mode: "asReady"
