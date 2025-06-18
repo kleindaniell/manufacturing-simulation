@@ -1,111 +1,230 @@
-import random
-from pathlib import Path
-from typing import List
+from typing import Tuple
 
-import simpy
-import yaml
+import pandas as pd
+import numpy as np
 
-from rlsim.engine.control import ProductionOrder
-from rlsim.engine.inbound import Inbound
-from rlsim.engine.monitor import Monitor
-from rlsim.engine.outbound import Outbound
-from rlsim.engine.production import Production
-from rlsim.stores.article_stores import DBR_stores
-from rlsim.scheduler.article_scheduler import ArticleScheduler
+from rlsim.factory_sim import FactorySimulation
+from rlsim.experiment import ExperimentRunner
+from rlsim.engine.orders import ProductionOrder, DemandOrder
+from rlsim.engine.cli_config import create_experiment_parser
+from rlsim.engine.utils import load_yaml
 
 
-class Simulation:
+class ArticleSimulation(FactorySimulation):
     def __init__(
         self,
-        run_until: int,
-        resources_cfg: dict,
-        products_cfg: dict,
-        schedule_interval: int,
-        set_constraint: int = None,
-        monitor_interval: int = 0,
-        warmup: int = 0,
-        warmup_monitor: int = 0,
-        log_interval: int = 72,
-        seed: int = None,
+        config,
+        resources,
+        products,
+        save_logs=True,
+        print_mode="metrics",
+        seed=None,
+        queue_order_selection=None,
     ):
-        super().__init__()
-        random.seed(seed)
-        self.env = simpy.Environment()
-
-        # Parameters
-        self.resources_config = resources_cfg
-        self.products_config = products_cfg
-        self.warmup = warmup
-        self.warmup_monitor = warmup_monitor
-        self.run_until = run_until
-        self.monitor_interval = monitor_interval
-        self.log_interval = log_interval
-        self.schedule_interval = schedule_interval
-        self.set_constraint = set_constraint
-
-        self.stores = DBR_stores(
-            env=self.env,
-            resources=self.resources_config,
-            products=self.products_config,
-            warmup=self.warmup,
-            log_interval=self.log_interval,
-            cb_start=30.5,
-        )
-        if self.set_constraint:
-            self.stores.contraint_resource = self.set_constraint
-
-        self.monitor = Monitor(
-            self.stores,
-            self.monitor_interval,
-            warmup=self.warmup_monitor,
-            show_print=True,
-        )
-        # callback = self.order_selection_callback()
-        self.production = Production(self.stores)
-
-        self.scheduler = ArticleScheduler(
-            self.stores, constraint_buffer_size=30.5, shipping_buffer_size=30.5
-        )
-        self.inboud = Inbound(self.stores, self.products_config)
-        self.outbound = Outbound(
-            self.stores, self.products_config, delivery_mode="asReady"
+        super().__init__(
+            config,
+            resources,
+            products,
+            save_logs,
+            print_mode,
+            seed,
+            queue_order_selection,
         )
 
-    def run_simulation(self):
-        print(self.run_until)
-        self.env.run(until=self.run_until)
+        self._create_constraint_buffer()
+        self._create_shipping_buffers()
 
-    def order_selection_callback(self):
-        def order_selection(store: DBR_stores, resource):
-            orders: List[ProductionOrder] = store.resource_input[resource].items
-            order = sorted(orders, key=lambda x: x.duedate)[0]
-            return order.id
+    def _start_custom_process(self):
+        self.contraint_resource, self.utilization_df = self.define_constraint()
+        self.env.process(self._update_buffer(self.contraint_resource))
 
-        return order_selection
+    def _create_constraint_buffer(self):
+
+        # Constraint buffers
+        self.cb_level = self.config.get("cb_level", 0)
+        self.constraint_buffer = self.cb_level
+        self.constraint_buffer_level = 0
+
+    def _create_shipping_buffers(self):
+        # Shipping_buffer
+        self.shipping_buffer = self.config.get("sb_level", 0)
+        self.shipping_buffer_level = {}
+
+        for product in self.products_config:
+            # self.shipping_buffer[product] = self.products_config[product].get(
+            #     "shipping_buffer", 0
+            # )
+            self.shipping_buffer_level[product] = 0
+
+    def _create_custom_logs(self):
+        custom_logs = {
+            "products": {
+                "shipping_buffer": {p: [] for p in self.products_config.keys()},
+            },
+            "general": {"constraint_buffer": []},
+        }
+        return custom_logs
+
+    def _register_custom_logs(self):
+        def register_logs():
+            yield self.env.timeout(self.warmup)
+            while True:
+                self.log_general.constraint_buffer.append(
+                    (self.env.now, self.constraint_buffer_level)
+                )
+                for product in self.products_config:
+                    self.log_product.shipping_buffer[product].append(
+                        (self.env.now, self.calculate_shipping_buffer(product))
+                    )
+                yield self.env.timeout(self.log_interval)
+
+        self.env.process(register_logs())
+
+    def define_constraint(self) -> Tuple[str, pd.DataFrame]:
+        df = pd.DataFrame(
+            data=np.zeros(
+                shape=(len(self.products_config), len(self.resources_config)),
+                dtype=np.float32,
+            ),
+            index=self.products_config.keys(),
+            columns=self.resources_config.keys(),
+        )
+
+        for product in self.products_config.keys():
+            product_demand = self.products_config[product].get("demand")
+            mean_arrival_rate = product_demand.get("freq").get("params")[0]
+            quantity = product_demand.get("quantity").get("params")[0]
+
+            for process in self.stores.processes_value_list[product]:
+                mean_processing_time = process["processing_time"]["params"][0]
+                resource = process["resource"]
+
+                df.loc[product, resource] += mean_processing_time
+
+            df.loc[product, :] = df.loc[product, :] * (1 / mean_arrival_rate) * quantity
+
+        utilization_df = df.copy()
+        constraint_resource = df.sum().sort_values(ascending=False).index[0]
+        return constraint_resource, utilization_df
+
+    def _update_buffer(self, constraint):
+        while True:
+            productionOrder: ProductionOrder = yield self.stores.resource_finished[
+                constraint
+            ].get()
+            product = productionOrder.product
+            actual_process = productionOrder.process_finished - 1
+            product_process = self.stores.processes_value_list[product][actual_process]
+            product_processing_time = product_process["processing_time"]["params"][0]
+            self.constraint_buffer_level -= product_processing_time
+
+    def calculate_shipping_buffer(self, product):
+        self.shipping_buffer_level[product] = (
+            self.stores.wip[product].level + self.stores.finished_goods[product].level
+        )
+
+        return self.shipping_buffer_level
+
+    def scheduler(self):
+        while True:
+            demandOrder: DemandOrder = yield self.stores.inbound_demand_orders.get()
+            product = demandOrder.product
+            quantity = demandOrder.quantity
+            duedate = demandOrder.duedate
+
+            ccr_processing_time = sum(
+                [
+                    process["processing_time"]["params"][0]
+                    for process in self.stores.processes_value_list[product]
+                    if process["resource"] == self.contraint_resource
+                ]
+            )
+
+            if ccr_processing_time > 0:
+                # schedule = (
+                #     duedate
+                #     - (self.shipping_buffer + ccr_processing_time)
+                #     - self.constraint_buffer
+                # )
+
+                buffer_diff = self.constraint_buffer_level - self.constraint_buffer
+                schedule = (
+                    self.env.now + buffer_diff if buffer_diff > 0 else self.env.now
+                )
+
+            else:
+                schedule = self.env.now
+
+            productionOrder = ProductionOrder(product=product, quantity=quantity)
+            productionOrder.schedule = schedule
+            productionOrder.duedate = demandOrder.duedate
+            productionOrder.priority = 0
+            self.env.process(
+                self.process_order(productionOrder, ccr_processing_time, demandOrder)
+            )
+            yield self.stores.outbound_demand_orders[product].put(demandOrder)
+
+    def process_order(
+        self, productionOrder: ProductionOrder, ccr_processing_time: float, do
+    ):
+
+        if (
+            productionOrder.schedule is not None
+            and productionOrder.schedule > self.env.now
+        ):
+            delay = productionOrder.schedule - self.env.now
+            yield self.env.timeout(delay)
+
+        self.constraint_buffer_level += ccr_processing_time
+        # print(f"=== Release: {self.env.now} -> \n{productionOrder}\n{do}")
+        self.env.process(self._release_order(productionOrder))
+
+
+def main():
+    """Main execution function."""
+    parser = create_experiment_parser()
+    args = parser.parse_args()
+
+    # Determine paths
+    if args.save_folder is None:
+        raise ValueError("Experiment folder not specified")
+
+    save_folder = args.save_folder
+    config_path = args.config
+    products_path = args.products
+    resources_path = args.resources
+    # Load configurations
+    try:
+        config = load_yaml(config_path)
+        resources_cfg = load_yaml(resources_path)
+        products_cfg = load_yaml(products_path)
+    except FileNotFoundError as e:
+        print(f"Configuration file not found: {e}")
+        return 1
+    except Exception as e:
+        print(f"Error loading configuration: {e}")
+        return 1
+
+    sim = ArticleSimulation(
+        config=config,
+        resources=resources_cfg,
+        products=products_cfg,
+        save_logs=True,
+        print_mode="metrics",
+        seed=args.exp_seed,
+    )
+
+    # Create and run experiment
+    # try:
+    experiment = ExperimentRunner(
+        simulation=sim,
+        number_of_runs=args.number_of_runs,
+        save_folder_path=save_folder,
+        run_name=args.name,
+        seed=args.exp_seed,
+    )
+    experiment.run_experiment()
 
 
 if __name__ == "__main__":
-    resource_path = Path("simulations/article/config/resources.yaml")
-    with open(resource_path, "r") as file:
-        resources_cfg = yaml.safe_load(file)
-
-    products_path = Path("simulations/article/config/products_original.yaml")
-    with open(products_path, "r") as file:
-        products_cfg = yaml.safe_load(file)
-
-    run_until = 200001
-    schedule_interval = 72
-    monitor_interval = 50000
-    warmup = 100000
-    warmup_monitor = 0
-
-    sim = Simulation(
-        run_until=run_until,
-        resources_cfg=resources_cfg,
-        products_cfg=products_cfg,
-        schedule_interval=schedule_interval,
-        monitor_interval=monitor_interval,
-        warmup=warmup,
-    )
-
-    sim.run_simulation()
+    exit(main())
