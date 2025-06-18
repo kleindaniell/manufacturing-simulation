@@ -298,7 +298,7 @@ class FactorySimulation(ABC):
             # Get order from queue
             queue_len = len(self.stores.resource_input[resource].items)
             if self.queue_order_selection is not None and queue_len > 1:
-                productionOrderId = self.queue_order_selection(self.stores, resource)
+                productionOrderId = self.queue_order_selection(self, resource)
                 productionOrder: ProductionOrder = yield self.stores.resource_input[
                     resource
                 ].get(lambda item: item.id == productionOrderId)
