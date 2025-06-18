@@ -66,6 +66,9 @@ class DistributionGenerator:
 
         return np.float32(value)
 
+    def random_int(self, start=0, end=999999) -> int:
+        return self.rng.randint(a=start, b=end)
+
 
 def load_yaml(yaml_file_path: Union[str, Path]):
     """Load configuration from YAML files"""

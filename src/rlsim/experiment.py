@@ -1,41 +1,47 @@
-import random
 import time
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, Any, List
+from typing import Any, Dict, List
 
 import pandas as pd
 import yaml
 
-from cli_config import create_experiment_parser, extract_simulation_args
-from rlsim.environment import load_config
-from simulation import SimulationDBR
+from rlsim.engine.cli_config import create_experiment_parser, extract_simulation_args
+from rlsim.engine.utils import DistributionGenerator
+from rlsim.engine.utils import load_yaml
+from rlsim.factory_sim import FactorySimulation
 
 
 class ExperimentRunner:
-    """Runner for multiple DBR simulation experiments."""
+    """Runner for multiple experiments."""
 
     def __init__(
         self,
-        resources_cfg: Dict[str, Any],
-        products_cfg: Dict[str, Any],
-        simulation_args: Dict[str, Any],
+        simulation: FactorySimulation,
         number_of_runs: int,
         save_folder_path: Path,
-        sim_path: Path = None,
+        run_name: str = None,
+        seed: int = None,
     ):
-        self.resources_cfg = resources_cfg
-        self.products_cfg = products_cfg
-        self.simulation_args = simulation_args
+        self.sim = simulation
         self.number_of_runs = number_of_runs
         self.save_folder_path = Path(save_folder_path)
-        self.sim_path = sim_path or Path.cwd()
+        self.run_name = run_name
+        self.seed = seed
+
+        self.rng = DistributionGenerator(self.seed)
 
         # Create save directory
-        self.save_folder_path.mkdir(parents=True, exist_ok=True)
+        self._create_experiment_folder()
 
         # Store experiment results
         self.results = []
+
+    def _create_experiment_folder(self) -> None:
+        """Create experiment folder with timestamp"""
+        timestamp = datetime.now().strftime("%y%m%d%H%M")
+        self.save_folder_path = self.save_folder_path / f"{timestamp}_{self.run_name}"
+        self.save_folder_path.mkdir(parents=True, exist_ok=True)
 
     def run_experiment(self) -> List[Dict[str, Any]]:
         """Run multiple simulation experiments."""
@@ -47,56 +53,48 @@ class ExperimentRunner:
         for run_id in range(self.number_of_runs):
             print(f"\n--- Running simulation - {run_id + 1}/{self.number_of_runs} ---")
 
-            # Set unique seed for each run if base seed is provided
-            run_args = self.simulation_args.copy()
-            if run_args.get("seed") is not None:
-                run_args["seed"] = run_args["seed"] + run_id
-            else:
-                # Generate random seed for reproducibility
-                run_args["seed"] = random.randint(0, 999999)
+            # Create new seed for run
+            run_seed = self.rng.random_int()
+            self.sim.reset_simulation(run_seed)
 
             # Run single simulation
-            result = self._run_single_simulation(run_id, run_args)
+            result = self._run_single_simulation(run_id)
             self.results.append(result)
 
+            print("\n")
             print(f"Run {run_id + 1} completed in {result['elapsed_time']:.4f} seconds")
 
         total_time = time.time() - start_time
         print(f"\nExperiment completed in {total_time:.4f} seconds")
+
+        # Save experiment params
+        self.sim.save_params(self.save_folder_path)
 
         # Save experiment summary
         self._save_experiment_summary(total_time)
 
         return self.results
 
-    def _run_single_simulation(
-        self, run_id: int, run_args: Dict[str, Any]
-    ) -> Dict[str, Any]:
+    def _run_single_simulation(self, run_id: int) -> Dict[str, Any]:
         """Run a single simulation and save results."""
-        # Create simulation
-        sim = SimulationDBR(
-            resources_cfg=self.resources_cfg, products_cfg=self.products_cfg, **run_args
-        )
 
         # Run simulation
-        elapsed_time = sim.run_simulation()
+        elapsed_time = self.sim.run_simulation()
 
         # Create run-specific folder
         run_folder = self.save_folder_path / f"run_{run_id:03d}"
         run_folder.mkdir(exist_ok=True)
 
-        # Save logs and parameters
-        sim.save_logs(run_folder)
-        sim.save_params(run_folder)
+        # Save logs
+        self.sim.save_history_logs(run_folder)
 
         # Save run-specific info
         run_info = {
             "run_id": run_id,
-            "seed": run_args["seed"],
+            "seed": self.sim.seed,
             "elapsed_time": elapsed_time,
-            "simulation_end_time": sim.sim.env.now,
+            "simulation_end_time": self.sim.env.now,
             "run_folder": str(run_folder),
-            **run_args,
         }
 
         # Save run info
@@ -117,7 +115,6 @@ class ExperimentRunner:
                 "save_folder_path": str(self.save_folder_path),
                 "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
             },
-            "simulation_parameters": self.simulation_args,
             "runs_summary": self.results,
         }
 
@@ -127,7 +124,9 @@ class ExperimentRunner:
 
         # Create results DataFrame
         results_df = pd.DataFrame(self.results)
-        results_df.to_csv(self.save_folder_path / "experiment_results.csv", index=False)
+        results_df.to_csv(
+            self.save_folder_path / "experiment_metadata.csv", index=False
+        )
 
         # Print summary statistics
         self._print_summary_stats(results_df)
@@ -153,18 +152,18 @@ def main():
     args = parser.parse_args()
 
     # Determine paths
-    sim_path = args.sim_path or Path(__file__).resolve().parent
-    timestamp = datetime.now().strftime("%y%m%d%H%M")
-    save_folder_path = (
-        args.save_folder_path or sim_path / "experiments" / f"{timestamp}_{args.name}"
-    )
-    resource_path = args.resources or sim_path / "config/resources.yaml"
-    products_path = args.products or sim_path / "config/products.yaml"
+    if args.save_folder is None:
+        raise ValueError("Experiment folder not specified")
 
+    save_folder = args.save_folder
+    config_path = args.config
+    products_path = args.products
+    resources_path = args.resources
     # Load configurations
     try:
-        resources_cfg = load_config(resource_path)
-        products_cfg = load_config(products_path)
+        config = load_yaml(config_path)
+        resources_cfg = load_yaml(resources_path)
+        products_cfg = load_yaml(products_path)
     except FileNotFoundError as e:
         print(f"Configuration file not found: {e}")
         return 1
@@ -172,29 +171,33 @@ def main():
         print(f"Error loading configuration: {e}")
         return 1
 
-    # Extract simulation arguments
-    simulation_args = extract_simulation_args(args)
+    sim = FactorySimulation(
+        config=config,
+        resources=resources_cfg,
+        products=products_cfg,
+        save_logs=True,
+        print_mode="metrics",
+        seed=args.exp_seed,
+    )
 
     # Create and run experiment
-    try:
-        experiment = ExperimentRunner(
-            resources_cfg=resources_cfg,
-            products_cfg=products_cfg,
-            simulation_args=simulation_args,
-            number_of_runs=args.number_of_runs,
-            save_folder_path=save_folder_path,
-            sim_path=sim_path,
-        )
+    # try:
+    experiment = ExperimentRunner(
+        simulation=sim,
+        number_of_runs=args.number_of_runs,
+        save_folder_path=save_folder,
+        run_name=args.name,
+        seed=args.exp_seed,
+    )
+    experiment.run_experiment()
+    #     return 0
 
-        experiment.run_experiment()
-        return 0
-
-    except KeyboardInterrupt:
-        print("\nExperiment interrupted by user")
-        return 1
-    except Exception as e:
-        print(f"Experiment failed: {e}")
-        return 1
+    # except KeyboardInterrupt:
+    #     print("\nExperiment interrupted by user")
+    #     return 1
+    # except Exception as e:
+    #     print(f"Experiment failed: {e}")
+    #     return 1
 
 
 if __name__ == "__main__":

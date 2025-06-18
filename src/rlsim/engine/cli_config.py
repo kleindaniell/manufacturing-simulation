@@ -1,6 +1,6 @@
 import argparse
 from pathlib import Path
-from typing import Any, Dict
+from typing import Any, Dict, Literal
 
 
 def add_general_args(parser: argparse.ArgumentParser) -> argparse.ArgumentParser:
@@ -37,6 +37,12 @@ def add_monitoring_args(parser: argparse.ArgumentParser) -> argparse.ArgumentPar
     )
     monitoring.add_argument(
         "--monitor-warmup", type=int, default=0, help="Warmup for monitor prints"
+    )
+    monitoring.add_argument(
+        "--print-mode",
+        type=str,
+        default=None,
+        help="Warmup for monitor prints. Options: 'all', 'metrics', 'status', None",
     )
     return parser
 
@@ -83,7 +89,13 @@ def add_experiment_args(parser: argparse.ArgumentParser) -> argparse.ArgumentPar
         help="Experiment short name",
     )
     experiment.add_argument(
-        "--save-folder-path",
+        "--exp-seed",
+        type=str,
+        default=None,
+        help="Experiment seed",
+    )
+    experiment.add_argument(
+        "--save-folder",
         type=Path,
         default=None,
         help="Folder path to save experiment results",
@@ -98,7 +110,6 @@ def create_experiment_parser() -> argparse.ArgumentParser:
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
 
-    parser = add_general_args(parser)
     parser = add_monitoring_args(parser)
     parser = add_config_args(parser)
     parser = add_experiment_args(parser)
