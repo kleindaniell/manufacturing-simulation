@@ -1,6 +1,6 @@
 import argparse
 from pathlib import Path
-from typing import Any, Dict, Literal
+from typing import Any, Dict
 
 
 def add_general_args(parser: argparse.ArgumentParser) -> argparse.ArgumentParser:
