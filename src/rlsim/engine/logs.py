@@ -1,4 +1,4 @@
-from dataclasses import dataclass, field, fields
+from dataclasses import field
 from typing import Dict, List, Tuple
 
 import numpy as np
