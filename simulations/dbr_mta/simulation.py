@@ -1,4 +1,4 @@
-from typing import Tuple, List, Callable
+from typing import Tuple, List
 
 import pandas as pd
 import numpy as np
@@ -30,8 +30,6 @@ class DBRSimulation(FactorySimulation):
             seed,
             queue_order_selection,
         )
-        self.queue_order_selection = self._create_order_selection_fn()
-        self._initiate_environment()
         self.ccr_release_limit = self.config.get("ccr_release_limit", float("inf"))
         self.scheduler_interval = self.config.get("scheduler_interval", 72)
         self.cb_target_level = self.config.get("cb_target_level", float("inf"))
@@ -42,9 +40,12 @@ class DBRSimulation(FactorySimulation):
     def _start_custom_process(self):
         self.contraint_resource, self.utilization_df = self.define_constraint()
         self.env.process(self._update_buffer(self.contraint_resource))
+        self.env.process(self._process_demandOders())
+        # Update fini
+        for product in self.products_config.keys():
+            self.env.process(self._update_finished_goods(product))
 
     def _create_constraint_buffer(self):
-
         # Constraint buffers
         self.constraint_buffer = self.config.get("cb_target_level", float("inf"))
         self.constraint_buffer_level = 0
@@ -60,6 +61,7 @@ class DBRSimulation(FactorySimulation):
             p: self.products_config[p].get("shipping_buffer", 0)
             for p in self.products_config.keys()
         }
+
         for product in self.products_config.keys():
             qnt = self.products_config[product].get("shipping_buffer", 0)
             self.stores.finished_goods[product].put(qnt)
@@ -70,12 +72,17 @@ class DBRSimulation(FactorySimulation):
         #     )
         #     self.shipping_buffer_level[product] = 0
 
+    def _update_finished_goods(self, product):
+        qnt = self.products_config[product].get("shipping_buffer", 0)
+        yield self.stores.finished_goods[product].put(qnt)
+
     def _create_custom_logs(self):
         custom_logs = {
             "products": {
-                "shipping_buffer": {p: [] for p in self.products_config.keys()},
+                "shipping_buffer_level": {p: [] for p in self.products_config.keys()},
+                "shipping_buffer_target": {p: [] for p in self.products_config.keys()},
             },
-            "general": {"constraint_buffer": []},
+            "general": {"constraint_buffer_level": [], "constraint_buffer_target": []},
         }
         return custom_logs
 
@@ -83,12 +90,18 @@ class DBRSimulation(FactorySimulation):
         def register_logs():
             yield self.env.timeout(self.warmup)
             while True:
-                self.log_general.constraint_buffer.append(
+                self.log_general.constraint_buffer_level.append(
                     (self.env.now, self.constraint_buffer_level)
                 )
+                self.log_general.constraint_buffer_target.append(
+                    (self.env.now, self.constraint_buffer)
+                )
                 for product in self.products_config:
-                    self.log_product.shipping_buffer[product].append(
+                    self.log_product.shipping_buffer_level[product].append(
                         (self.env.now, self.calculate_shipping_buffer(product))
+                    )
+                    self.log_product.shipping_buffer_target[product].append(
+                        (self.env.now, self.shipping_buffer[product])
                     )
                 yield self.env.timeout(self.log_interval)
 
@@ -122,15 +135,21 @@ class DBRSimulation(FactorySimulation):
         return constraint_resource, utilization_df
 
     def _update_buffer(self, constraint):
+        ccr_setup_time_params = self.stores.resources[self.contraint_resource].get(
+            "setup", {"params": None}
+        )
+        ccr_setup_time = ccr_setup_time_params.get("params", [0])[0]
         while True:
             productionOrder: ProductionOrder = yield self.stores.resource_finished[
                 constraint
             ].get()
             product = productionOrder.product
+            quantity = productionOrder.quantity
             actual_process = productionOrder.process_finished - 1
             product_process = self.stores.processes_value_list[product][actual_process]
             product_processing_time = product_process["processing_time"]["params"][0]
-            self.constraint_buffer_level -= product_processing_time
+            ccr_time = product_processing_time * quantity + ccr_setup_time
+            self.constraint_buffer_level -= ccr_time
 
     def calculate_shipping_buffer(self, product):
         self.shipping_buffer_level[product] = (
@@ -149,7 +168,6 @@ class DBRSimulation(FactorySimulation):
         while True:
             orders: List[Tuple[ProductionOrder, float, float]] = []
             for product in self.stores.products.keys():
-
                 ccr_processing_time = sum(
                     [
                         process["processing_time"]["params"][0]
@@ -181,13 +199,11 @@ class DBRSimulation(FactorySimulation):
             orders = list(sorted(orders, key=lambda x: x[-1], reverse=True))
 
             # Release orders based on priority
-            print(self.constraint_buffer_level, self.constraint_buffer)
             if self.constraint_buffer_level < self.constraint_buffer:
                 ccr_safe_load = self.constraint_buffer - self.constraint_buffer_level
 
                 ccr_released = 0
                 for productionOrder, ccr_time, _ in orders:
-
                     product = productionOrder.product
                     quantity = productionOrder.quantity
                     release = False
@@ -219,43 +235,44 @@ class DBRSimulation(FactorySimulation):
         self.constraint_buffer_level += ccr_add
         self.env.process(self._release_order(productionOrder))
 
-    def _create_order_selection_fn(self) -> Callable:
-        """Create the DBR order selection function."""
+    def order_selection(self, resource):
+        orders: List[ProductionOrder] = self.stores.resource_input[resource].items
 
-        def order_selection(self: DBRSimulation, resource) -> int:
-            orders: List[ProductionOrder] = self.stores.resource_input[resource].items
+        for id, production_order in enumerate(orders):
+            # Get all orders ahead in the system
+            ahead_orders: List[ProductionOrder] = []
+            for resource_ in self.stores.resources.keys():
+                ahead_orders.extend(self.stores.resource_input[resource_].items)
+                ahead_orders.extend(self.stores.resource_output[resource_].items)
+                ahead_orders.extend(self.stores.resource_transport[resource_].items)
+                ahead_orders.extend(self.stores.resource_processing[resource_].items)
 
-            for id, production_order in enumerate(orders):
-                # Get all orders ahead in the system
-                ahead_orders: List[ProductionOrder] = []
-                for resource_ in self.stores.resources.keys():
-                    ahead_orders.extend(self.stores.resource_input[resource_].items)
-                    ahead_orders.extend(self.stores.resource_output[resource_].items)
-                    ahead_orders.extend(self.stores.resource_transport[resource_].items)
-                    ahead_orders.extend(
-                        self.stores.resource_processing[resource_].items
-                    )
+            product = production_order.product
+            released = production_order.released
 
-                product = production_order.product
-                released = production_order.released
+            # Calculate quantity of orders ahead for same product
+            ahead_quantity = [
+                order.quantity
+                for order in ahead_orders
+                if order.released < released and order.product == product
+            ]
 
-                # Calculate quantity of orders ahead for same product
-                ahead_quantity = [
-                    order.quantity
-                    for order in ahead_orders
-                    if order.released < released and order.product == product
-                ]
+            # Calculate priority
+            orders[id].priority = (
+                sum(ahead_quantity) + self.stores.finished_goods[product].level
+            ) / self.shipping_buffer[product]
 
-                # Calculate priority
-                orders[id].priority = (
-                    sum(ahead_quantity) + self.stores.finished_goods[product].level
-                ) / self.shipping_buffer[product]
-
-            # Return order with lowest priority
+        # Return order with lowest priority
+        if len(orders) > 0:
             selected_order = min(orders, key=lambda x: x.priority)
-            return selected_order.id
+            # Get order from queue
+            productionOrder = yield self.stores.resource_input[resource].get(
+                lambda x: x.id == selected_order.id
+            )
+        else:
+            productionOrder = yield self.stores.resource_input[resource].get()
 
-        return order_selection
+        return productionOrder
 
     def calculate_replenishment(self, product):
         finished_goods = self.stores.finished_goods[product].level
@@ -263,9 +280,7 @@ class DBRSimulation(FactorySimulation):
 
         penetration = target_level - finished_goods
         replenishment = max(target_level - self.calculate_shipping_buffer(product), 0)
-        print(
-            f"{self.env.now} - {product} - {finished_goods} - {target_level} - {replenishment} - {self.calculate_shipping_buffer(product)}"
-        )
+
         return replenishment, penetration
 
     def _process_demandOders(self):
@@ -273,6 +288,42 @@ class DBRSimulation(FactorySimulation):
             demandOrder: DemandOrder = yield self.stores.inbound_demand_orders.get()
             product = demandOrder.product
             yield self.stores.outbound_demand_orders[product].put(demandOrder)
+
+    def print_custom_metrics(self):
+        """Print DBR metrics"""
+
+        # Shipping buffer print
+        print("DBR - SHIPPING BUFFER:")
+        logs_df = self.log_product.to_dataframe()
+        logs_sb = logs_df.loc[
+            logs_df["variable"].isin(
+                ["shipping_buffer_target", "shipping_buffer_level"]
+            )
+        ]
+        if not logs_sb.empty:
+            logs_sb = logs_sb.pivot_table(
+                values="value", index="product", columns="variable"
+            )
+            print(logs_sb)
+            print("\n")
+        else:
+            print("Empty metrics")
+            print("\n")
+
+        # Constraint buffer print
+        print("DBR - CONSTRAINT BUFFER:")
+        logs_df = self.log_general.to_dataframe()
+        logs_cb = logs_df.loc[
+            logs_df["variable"].isin(
+                ["constraint_buffer_target", "constraint_buffer_level"]
+            )
+        ]
+        if not logs_cb.empty:
+            print(logs_cb[["variable", "value"]].groupby("variable").mean())
+            print("\n")
+        else:
+            print("Empty metrics")
+            print("\n")
 
 
 def main():

@@ -45,6 +45,7 @@ class ExperimentRunner:
 
     def run_experiment(self) -> List[Dict[str, Any]]:
         """Run multiple simulation experiments."""
+        print("\n")
         print(f"Starting experiment with {self.number_of_runs} runs")
         print(f"Results will be saved to: {self.save_folder_path}")
 

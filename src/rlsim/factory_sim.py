@@ -1,4 +1,4 @@
-from abc import ABC, abstractmethod
+from abc import ABC
 from typing import Any, Callable, Dict, Literal
 
 import numpy as np
@@ -68,9 +68,9 @@ class FactorySimulation(ABC):
         # Start Simulation processes
         self._start_resources()
         self._start_products()
-        self._run_scheduler()
         self._run_monitor()
         self._start_custom_process()
+        self._run_scheduler()
 
     def _init_random_generators(self) -> None:
         """Initialize random number generators for different purposes"""
@@ -113,11 +113,9 @@ class FactorySimulation(ABC):
 
         self.env.process(register_product_log())
 
-    @abstractmethod
     def _create_custom_logs(self):
         pass
 
-    @abstractmethod
     def _register_custom_logs(self):
         pass
 
@@ -164,7 +162,6 @@ class FactorySimulation(ABC):
         self.env.process(self.scheduler())
 
     def scheduler(self):
-        print("====== running scheduler ========")
         while True:
             demandOrder: DemandOrder = yield self.stores.inbound_demand_orders.get()
             product = demandOrder.product
@@ -296,16 +293,7 @@ class FactorySimulation(ABC):
             yield self.machine_down[resource]
 
             # Get order from queue
-            queue_len = len(self.stores.resource_input[resource].items)
-            if self.queue_order_selection is not None and queue_len > 1:
-                productionOrderId = self.queue_order_selection(self, resource)
-                productionOrder: ProductionOrder = yield self.stores.resource_input[
-                    resource
-                ].get(lambda item: item.id == productionOrderId)
-            else:
-                productionOrder: ProductionOrder = yield self.stores.resource_input[
-                    resource
-                ].get()
+            productionOrder: ProductionOrder = yield from self.order_selection(resource)
 
             yield self.stores.resource_processing[resource].put(productionOrder)
 
@@ -364,6 +352,10 @@ class FactorySimulation(ABC):
                     self.log_resource.utilization[resource].append(
                         (self.env.now, round(end_time - start_time, 6))
                     )
+
+    def order_selection(self, resource):
+        productionOrder = yield self.stores.resource_input[resource].get()
+        return productionOrder
 
     def _delivery_orders(self, product):
         while True:
@@ -479,39 +471,58 @@ class FactorySimulation(ABC):
             elif self.print_mode == "status":
                 self._print_status_only()
 
+            self.print_custom_metrics()
+
             yield self.env.timeout(self.monitor_interval)
 
     def _print_all_metrics(self) -> None:
         """Print all available metrics and status"""
-        snapshot = self.stores.simulation_snapshot()
         print("SYSTEM STATUS:")
-        print(snapshot)
-        print("\n")
+        snapshot = self.stores.simulation_snapshot()
+        if not snapshot.empty:
+            print(snapshot)
+            print("\n")
 
         self._print_metrics_only()
 
     def _print_metrics_only(self) -> None:
         """Print only performance metrics"""
-        products = self.log_product.calculate_metrics()
-        print("PRODUCT METRICS:")
-        print(products)
-        print("\n")
 
+        print("PRODUCT METRICS:")
+        products = self.log_product.calculate_metrics()
+        if not products.empty:
+            print(products)
+            print("\n")
+        else:
+            print("Empty metrics")
+            print("\n")
+
+        print("RESOURCE METRICS:")
         resources = self.log_resource.calculate_metrics()
         if not resources.empty:
             sim_elapsed_time = self.env.now - self.warmup
             resources.loc[:, "utilization"] = (
                 resources.loc[:, "utilization"] / sim_elapsed_time
             )
-            print("RESOURCE METRICS:")
             print(resources)
+            print("\n")
+        else:
+            print("Empty metrics")
+            print("\n")
 
     def _print_status_only(self) -> None:
         """Print only system status"""
-        snapshot = self.stores.simulation_snapshot()
         print("SYSTEM STATUS:")
-        print(snapshot)
-        print("\n")
+        snapshot = self.stores.simulation_snapshot()
+        if not snapshot.empty:
+            print(snapshot)
+            print("\n")
+        else:
+            print("Empty metrics")
+            print("\n")
+
+    def print_custom_metrics(self):
+        pass
 
     def save_history_logs(self, save_path: Path) -> None:
         """Save logs to folder"""
@@ -555,7 +566,6 @@ class FactorySimulation(ABC):
         end_time = time()
         return end_time - start_time
 
-    @abstractmethod
     def _start_custom_process(self):
         pass
 

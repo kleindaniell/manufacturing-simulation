@@ -55,8 +55,7 @@ class ProductLogs:
 
         return logs_df
 
-    def calculate_metrics(self) -> Tuple[pd.DataFrame, pd.DataFrame]:
-
+    def calculate_metrics(self) -> pd.DataFrame:
         logs = self.to_dataframe()
         df_result = pd.DataFrame()
         # Sum
@@ -136,7 +135,6 @@ class ResourceLogs:
         return df.reset_index(drop=True)
 
     def calculate_metrics(self) -> pd.DataFrame:
-
         logs = self.to_dataframe()
         df_result = pd.DataFrame()
         # Sum
@@ -171,7 +169,6 @@ class ResourceLogs:
         for var in ["breakdowns", "setups"]:
             df_tmp = logs.loc[logs["variable"] == var]
             if not df_tmp.empty:
-
                 df_var = df_tmp.pivot_table("value", "resource", "variable", "count")
                 df_var.columns.name = None
                 df_var.columns = [f"{var}_count"]
@@ -186,12 +183,9 @@ class ResourceLogs:
 
 
 class GeneralLogs:
-
     def __init__(self, **kwargs):
-
         for key, value in kwargs.items():
             setattr(self, key, value)
-        print(self.__dict__)
 
     def to_dataframe(self) -> pd.DataFrame:
         df = pd.DataFrame(
