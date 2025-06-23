@@ -111,7 +111,8 @@ class FactorySimulation(ABC):
 
                 yield self.env.timeout(self.log_interval)
 
-        self.env.process(register_product_log())
+        pass
+        # self.env.process(register_product_log())
 
     def _create_custom_logs(self):
         pass
@@ -194,6 +195,9 @@ class FactorySimulation(ABC):
         # Add order to firts product and increment WIP
         yield self.stores.resource_input[first_resource].put(productionOrder)
         yield self.stores.wip[product].put(productionOrder.quantity)
+        # Log Wip
+        wip = self.stores.wip[product].level
+        self.log_product.wip_log[product].append((self.env.now, wip))
 
         # Log release products
         if self.warmup <= self.env.now and self.save_logs:
@@ -269,6 +273,12 @@ class FactorySimulation(ABC):
                 yield self.stores.resource_transport[resource].get()
                 yield self.stores.finished_goods[product].put(productionOrder.quantity)
                 yield self.stores.wip[product].get(productionOrder.quantity)
+                # Log Wip
+                wip = self.stores.wip[product].level
+                self.log_product.wip_log[product].append((self.env.now, wip))
+                # Log FG
+                fg_level = self.stores.finished_goods[product].level
+                self.log_product.fg_log[product].append((self.env.now, fg_level))
 
                 # Log flow time
                 if self.save_logs and self.warmup <= self.env.now:
@@ -379,7 +389,11 @@ class FactorySimulation(ABC):
 
         if self.stores.finished_goods[product].level >= quantity:
             yield self.stores.finished_goods[product].get(quantity)
+            # Placeholder for custom action when fg is reduced
+            self.process_fg_reduce(product)
             if self.save_logs and self.env.now > self.warmup:
+                fg_level = self.stores.finished_goods[product].level
+                self.log_product.fg_log[product].append((self.env.now, fg_level))
                 self.log_product.delivered_ontime[product].append(
                     (self.env.now, quantity)
                 )
@@ -393,6 +407,10 @@ class FactorySimulation(ABC):
 
         # Remove from finished goods
         yield self.stores.finished_goods[product].get(quantity)
+        fg_level = self.stores.finished_goods[product].level
+        self.log_product.fg_log[product].append((self.env.now, fg_level))
+        # Placeholder for custom action when fg is reduced
+        self.process_fg_reduce(product)
 
         # Update delivery time and log
         demand_order.delivered = self.env.now
@@ -416,6 +434,10 @@ class FactorySimulation(ABC):
 
             # Remove from finished goods
             yield self.stores.finished_goods[product].get(quantity)
+            fg_level = self.stores.finished_goods[product].level
+            self.log_product.fg_log[product].append((self.env.now, fg_level))
+            # Placeholder for custom action when fg is reduced
+            self.process_fg_reduce(product)
 
             # Update delivery time and log
             demand_order.delivered = self.env.now
@@ -425,6 +447,9 @@ class FactorySimulation(ABC):
                 self._log_lead_time(demand_order)
 
         self.env.process(_delivery_order(demand_order))
+
+    def process_fg_reduce(self, product):
+        pass
 
     def _log_delivery_performance(self, demand_order: DemandOrder) -> None:
         """Log delivery performance metrics"""

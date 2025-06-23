@@ -30,6 +30,7 @@ class DBRSimulation(FactorySimulation):
             seed,
             queue_order_selection,
         )
+
         self.ccr_release_limit = self.config.get("ccr_release_limit", float("inf"))
         self.scheduler_interval = self.config.get("scheduler_interval", 72)
         self.cb_target_level = self.config.get("cb_target_level", float("inf"))
@@ -39,11 +40,15 @@ class DBRSimulation(FactorySimulation):
 
     def _start_custom_process(self):
         self.contraint_resource, self.utilization_df = self.define_constraint()
-        self.env.process(self._update_buffer(self.contraint_resource))
-        self.env.process(self._process_demandOders())
-        # Update fini
+        self.env.process(self._update_constraint_buffer(self.contraint_resource))
+        self.env.process(self._process_demandOrders())
+        # Update finihed goods
+        self.sb_update: bool = self.config.get("sb_update", False)
+        self.cb_update: bool = self.config.get("cb_update", False)
         for product in self.products_config.keys():
             self.env.process(self._update_finished_goods(product))
+            if self.sb_update:
+                self.env.process(self.adjust_shipping_buffer(product))
 
     def _create_constraint_buffer(self):
         # Constraint buffers
@@ -61,16 +66,11 @@ class DBRSimulation(FactorySimulation):
             p: self.products_config[p].get("shipping_buffer", 0)
             for p in self.products_config.keys()
         }
+        self.shipping_buffer_penetration = {p: [] for p in self.products_config.keys()}
 
         for product in self.products_config.keys():
             qnt = self.products_config[product].get("shipping_buffer", 0)
             self.stores.finished_goods[product].put(qnt)
-
-        # for product in self.products_config:
-        #     self.shipping_buffer[product] = self.products_config[product].get(
-        #         "shipping_buffer", 0
-        #     )
-        #     self.shipping_buffer_level[product] = 0
 
     def _update_finished_goods(self, product):
         qnt = self.products_config[product].get("shipping_buffer", 0)
@@ -81,6 +81,7 @@ class DBRSimulation(FactorySimulation):
             "products": {
                 "shipping_buffer_level": {p: [] for p in self.products_config.keys()},
                 "shipping_buffer_target": {p: [] for p in self.products_config.keys()},
+                "schedule_consumed": {p: [] for p in self.products_config.keys()},
             },
             "general": {"constraint_buffer_level": [], "constraint_buffer_target": []},
         }
@@ -105,7 +106,8 @@ class DBRSimulation(FactorySimulation):
                     )
                 yield self.env.timeout(self.log_interval)
 
-        self.env.process(register_logs())
+        # self.env.process(register_logs())
+        pass
 
     def define_constraint(self) -> Tuple[str, pd.DataFrame]:
         df = pd.DataFrame(
@@ -134,7 +136,7 @@ class DBRSimulation(FactorySimulation):
         constraint_resource = df.sum().sort_values(ascending=False).index[0]
         return constraint_resource, utilization_df
 
-    def _update_buffer(self, constraint):
+    def _update_constraint_buffer(self, constraint):
         ccr_setup_time_params = self.stores.resources[self.contraint_resource].get(
             "setup", {"params": None}
         )
@@ -150,6 +152,10 @@ class DBRSimulation(FactorySimulation):
             product_processing_time = product_process["processing_time"]["params"][0]
             ccr_time = product_processing_time * quantity + ccr_setup_time
             self.constraint_buffer_level -= ccr_time
+            if self.warmup <= self.env.now and self.save_logs:
+                self.log_general.constraint_buffer_level.append(
+                    (self.env.now, self.constraint_buffer_level)
+                )
 
     def calculate_shipping_buffer(self, product):
         self.shipping_buffer_level[product] = (
@@ -164,7 +170,6 @@ class DBRSimulation(FactorySimulation):
             "setup", {"params": None}
         )
         ccr_setup_time = ccr_setup_time_params.get("params", [0])[0]
-
         while True:
             orders: List[Tuple[ProductionOrder, float, float]] = []
             for product in self.stores.products.keys():
@@ -177,7 +182,9 @@ class DBRSimulation(FactorySimulation):
                 )
 
                 replenishment, penetration = self.calculate_replenishment(product)
-
+                self.log_product.schedule_consumed[product].append(
+                    (self.env.now, replenishment)
+                )
                 orders.append(
                     (
                         # Production order
@@ -231,8 +238,13 @@ class DBRSimulation(FactorySimulation):
         ):
             delay = productionOrder.schedule - self.env.now
             yield self.env.timeout(delay)
-
+        product = productionOrder.product
         self.constraint_buffer_level += ccr_add
+        if self.warmup <= self.env.now and self.save_logs:
+            self.log_general.constraint_buffer_level.append(
+                (self.env.now, self.constraint_buffer_level)
+            )
+
         self.env.process(self._release_order(productionOrder))
 
     def order_selection(self, resource):
@@ -283,7 +295,72 @@ class DBRSimulation(FactorySimulation):
 
         return replenishment, penetration
 
-    def _process_demandOders(self):
+    def process_fg_reduce(self, product):
+        # Update penetration
+        if self.env.now >= self.warmup:
+            penetration = (
+                self.shipping_buffer[product]
+                - self.stores.finished_goods[product].level
+            )
+            self.shipping_buffer_penetration[product].append(
+                [self.env.now, penetration]
+            )
+            self.log_product.shipping_buffer_level[product].append(
+                (self.env.now, self.calculate_shipping_buffer(product))
+            )
+
+        return
+
+    def adjust_shipping_buffer(self, product):
+        adjust_multiply = 20
+        adjust_interval = self.scheduler_interval * adjust_multiply
+        yield self.env.timeout(self.warmup)
+        while True:
+            red_penetration = round(self.shipping_buffer[product] * (2 / 3), 2)
+            green_penetration = round(self.shipping_buffer[product] * (1 / 3), 2)
+
+            interval = self.env.now - adjust_interval
+            total_penetrations = np.array(self.shipping_buffer_penetration[product])
+
+            if total_penetrations.shape[0] > 0:
+                self.shipping_buffer_penetration[product] = list(
+                    filter(
+                        lambda x: x[0] > interval,
+                        self.shipping_buffer_penetration[product],
+                    )
+                )
+                total_penetrations = total_penetrations[
+                    total_penetrations[:, 0] >= interval
+                ]
+
+                red_counter = total_penetrations[
+                    total_penetrations[:, 1] >= red_penetration
+                ].shape[0]
+                green_counter = total_penetrations[
+                    total_penetrations[:, 1] < green_penetration
+                ].shape[0]
+
+                if product == "produto10":
+                    print(
+                        f"{self.env.now} - {interval} - {self.shipping_buffer[product]}:{red_penetration}:{green_penetration} - {red_counter}/{len(total_penetrations)} - {green_counter}/{len(total_penetrations)}"
+                    )
+
+                if red_counter > (total_penetrations.shape[0] * 0.8):
+                    self.shipping_buffer[product] += 1
+                    yield self.env.timeout(adjust_interval)
+
+                elif green_counter == total_penetrations.shape[0]:
+                    self.shipping_buffer[product] -= 1
+                    yield self.env.timeout(adjust_interval)
+
+                # Log buffer
+                self.log_product.shipping_buffer_target[product].append(
+                    (self.env.now, self.shipping_buffer[product])
+                )
+
+            yield self.env.timeout(adjust_interval)
+
+    def _process_demandOrders(self):
         while True:
             demandOrder: DemandOrder = yield self.stores.inbound_demand_orders.get()
             product = demandOrder.product

@@ -11,8 +11,9 @@ class Metrics:
         self,
         experiment_folder: Path,
     ):
-        if not isinstance(experiment_folder, Path):
-            self.experiment_folder = Path(experiment_folder).resolve()
+        self.experiment_folder = experiment_folder
+        if not isinstance(self.experiment_folder, Path):
+            self.experiment_folder = Path(self.experiment_folder).resolve()
 
     def read_logs(
         self, log: Literal["general", "products", "resources", "all"] = "all"
