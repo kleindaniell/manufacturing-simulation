@@ -1,60 +1,92 @@
-import argparse
-from pathlib import Path
+from typing import List
 
-import yaml
+from manusim.factory_sim import FactorySimulation
+from manusim.experiment import ExperimentRunner
+from manusim.engine.orders import ProductionOrder
+from manusim.engine.cli_config import create_experiment_parser
+from manusim.engine.utils import load_yaml
 
-from rlsim.environment import Environment
+
+class NewSimulation(FactorySimulation):
+    def __init__(
+        self,
+        config,
+        resources,
+        products,
+        save_logs=True,
+        print_mode="metrics",
+        seed=None,
+    ):
+        super().__init__(
+            config,
+            resources,
+            products,
+            save_logs,
+            print_mode,
+            seed,
+        )
+
+    # New order selection method
+    def order_selection(self, resource):
+        orders: List[ProductionOrder] = self.stores.resource_input[resource].items
+
+        # Return order with highest priority
+        if len(orders) > 0:
+            selected_order = max(orders, key=lambda x: x.priority)
+            # Get order from queue
+            productionOrder = yield self.stores.resource_input[resource].get(
+                lambda x: x.id == selected_order.id
+            )
+        else:
+            productionOrder = yield self.stores.resource_input[resource].get()
+
+        return productionOrder
 
 
-def parse_args():
-    parser = argparse.ArgumentParser(description="Run simulation environment")
+def main():
+    """Main execution function."""
+    parser = create_experiment_parser()
+    args = parser.parse_args()
 
-    parser.add_argument(
-        "--run-until", type=int, default=200001, help="Simulation end time"
+    # Determine paths
+    if args.save_folder is None:
+        raise ValueError("Experiment folder not specified")
+
+    save_folder = args.save_folder
+    config_path = args.config
+    products_path = args.products
+    resources_path = args.resources
+    # Load configurations
+    try:
+        config = load_yaml(config_path)
+        resources_cfg = load_yaml(resources_path)
+        products_cfg = load_yaml(products_path)
+    except FileNotFoundError as e:
+        print(f"Configuration file not found: {e}")
+        return 1
+    except Exception as e:
+        print(f"Error loading configuration: {e}")
+        return 1
+
+    sim = NewSimulation(
+        config=config,
+        resources=resources_cfg,
+        products=products_cfg,
+        save_logs=True,
+        print_mode="metrics",
+        seed=args.exp_seed,
     )
-    parser.add_argument(
-        "--monitor-interval", type=int, default=50000, help="Monitor sampling interval"
-    )
-    parser.add_argument(
-        "--log-interval", type=int, default=48, help="Log sampling interval"
-    )
-    parser.add_argument(
-        "--warmup",
-        type=int,
-        default=0,
-        help="Warmup duration for start logging results",
-    )
-    parser.add_argument(
-        "--monitor-warmup", type=int, default=0, help="Warmup duration for monitor"
-    )
 
-    parser.add_argument("--seed", type=int, default=None, help="Random seed")
-
-    return parser.parse_args()
+    # Create and run experiment
+    experiment = ExperimentRunner(
+        simulation=sim,
+        number_of_runs=args.number_of_runs,
+        save_folder_path=save_folder,
+        run_name=args.name,
+        seed=args.exp_seed,
+    )
+    experiment.run_experiment()
 
 
 if __name__ == "__main__":
-    args = parse_args()
-
-    # Load YAML config files
-    resource_path = Path("example/config/resources.yaml")
-    with open(resource_path, "r") as file:
-        resources_cfg = yaml.safe_load(file)
-
-    products_path = Path("example/config/products.yaml")
-    with open(products_path, "r") as file:
-        products_cfg = yaml.safe_load(file)
-
-    # Instantiate and run simulation
-    sim = Environment(
-        run_until=args.run_until,
-        resources_cfg=resources_cfg,
-        products_cfg=products_cfg,
-        monitor_interval=args.monitor_interval,
-        log_interval=args.log_interval,
-        monitor_warmup=args.monitor_warmup,
-        warmup=args.warmup,
-        seed=args.seed,
-    )
-
-    sim.run_simulation()
+    exit(main())
