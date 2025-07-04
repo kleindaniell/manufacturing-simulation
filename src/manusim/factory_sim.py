@@ -1,5 +1,5 @@
 from abc import ABC
-from typing import Any, Callable, Dict, Literal
+from typing import Any, Dict, Literal
 
 import numpy as np
 import simpy
