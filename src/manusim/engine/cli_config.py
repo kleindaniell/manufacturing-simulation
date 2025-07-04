@@ -5,18 +5,24 @@ from typing import Any, Dict
 
 def add_general_args(parser: argparse.ArgumentParser) -> argparse.ArgumentParser:
     """Add general simulation arguments to parser."""
+
     general = parser.add_argument_group("General Settings")
     general.add_argument(
         "--run-until", type=int, default=200001, help="Simulation end time"
     )
-    general.add_argument("--seed", type=int, default=None, help="Random seed")
-    general.add_argument("--sim-path", type=Path, default=None, help="Simulation path")
+
     general.add_argument(
         "--warmup", type=int, default=100000, help="Warmup for start logging results"
     )
     general.add_argument(
         "--log-interval", type=int, default=48, help="Interval between vars log"
     )
+    general.add_argument(
+        "--save-logs",
+        action="store_false",
+        help="Flat to register logs on simulation",
+    )
+    general.add_argument("--seed", type=int, default=None, help="Random seed")
     return parser
 
 
@@ -32,23 +38,11 @@ def add_monitoring_args(parser: argparse.ArgumentParser) -> argparse.ArgumentPar
     monitoring.add_argument(
         "--monitor-warmup", type=int, default=0, help="Warmup for monitor prints"
     )
-    return parser
-
-
-def add_scheduling_args(parser: argparse.ArgumentParser) -> argparse.ArgumentParser:
-    """Add scheduling arguments to parser."""
-    scheduling = parser.add_argument_group("Scheduling Parameters")
-    scheduling.add_argument(
-        "--schedule-interval", type=int, default=72, help="Schedule interval"
-    )
-    scheduling.add_argument(
-        "--cb-size", type=float, default=float("inf"), help="Constraint buffer size"
-    )
-    scheduling.add_argument(
-        "--ccr-release-limit",
-        type=float,
-        default=float("inf"),
-        help="Limit to release orders",
+    monitoring.add_argument(
+        "--print-mode",
+        type=str,
+        default=None,
+        help="Warmup for monitor prints. Options: 'all', 'metrics', 'status', None",
     )
     return parser
 
@@ -57,11 +51,28 @@ def add_config_args(parser: argparse.ArgumentParser) -> argparse.ArgumentParser:
     """Add configuration file arguments to parser."""
     config = parser.add_argument_group("Configuration Files")
     config.add_argument(
+        "--config", type=Path, default=None, help="General config YAML file path"
+    )
+    config.add_argument(
         "--resources", type=Path, default=None, help="Resource config YAML file path"
     )
     config.add_argument(
         "--products", type=Path, default=None, help="Product config YAML file path"
     )
+    return parser
+
+
+def create_simulation_parser() -> argparse.ArgumentParser:
+    """Create parser for single simulation runs."""
+    parser = argparse.ArgumentParser(
+        description="Run simulation environment",
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+    )
+
+    parser = add_general_args(parser)
+    parser = add_monitoring_args(parser)
+    parser = add_config_args(parser)
+
     return parser
 
 
@@ -78,26 +89,17 @@ def add_experiment_args(parser: argparse.ArgumentParser) -> argparse.ArgumentPar
         help="Experiment short name",
     )
     experiment.add_argument(
-        "--save-folder-path",
+        "--exp-seed",
+        type=str,
+        default=None,
+        help="Experiment seed",
+    )
+    experiment.add_argument(
+        "--save-folder",
         type=Path,
         default=None,
         help="Folder path to save experiment results",
     )
-    return parser
-
-
-def create_simulation_parser() -> argparse.ArgumentParser:
-    """Create parser for single simulation runs."""
-    parser = argparse.ArgumentParser(
-        description="Run DBR simulation environment",
-        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
-    )
-
-    parser = add_general_args(parser)
-    parser = add_monitoring_args(parser)
-    parser = add_scheduling_args(parser)
-    parser = add_config_args(parser)
-
     return parser
 
 
@@ -108,9 +110,7 @@ def create_experiment_parser() -> argparse.ArgumentParser:
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
 
-    parser = add_general_args(parser)
     parser = add_monitoring_args(parser)
-    parser = add_scheduling_args(parser)
     parser = add_config_args(parser)
     parser = add_experiment_args(parser)
 
