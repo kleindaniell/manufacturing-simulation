@@ -1,5 +1,5 @@
 import random
-from typing import List, Union, Any
+from typing import List, Union, Any, Literal
 from pathlib import Path
 import numpy as np
 import yaml
@@ -9,7 +9,13 @@ class DistributionGenerator:
     def __init__(self, seed):
         self.rng = random.Random(seed)
 
-    def random_number(self, distribution: str, params: List[Any]) -> float:
+    def random_number(
+        self,
+        distribution: Literal[
+            "constant", "uniform", "gamma", "erlang", "expo", "normal"
+        ],
+        params: List[Any],
+    ) -> float:
         if distribution == "constant":
             value = params[0]
         elif distribution == "uniform":
