@@ -47,6 +47,7 @@ class FactorySimulation(ABC):
         self.delivery_mode = self.config.get("delivery_mode", "asReady")
         self.log_interval = self.config.get("log_interval", 72)
         self.save_logs = self.config.get("save_logs", save_logs)
+        self.save_queues = self.config.get("save_queues", save_logs)
 
         self._initiate_environment()
 
@@ -195,15 +196,33 @@ class FactorySimulation(ABC):
         # Add order to firts product and increment WIP
         yield self.stores.resource_input[first_resource].put(productionOrder)
         yield self.stores.wip[product].put(productionOrder.quantity)
-        # Log Wip
-        wip = self.stores.wip[product].level
-        self.log_product.wip_log[product].append((self.env.now, wip))
 
         # Log release products
         if self.warmup <= self.env.now and self.save_logs:
             self.log_product.released[product].append(
                 (self.env.now, productionOrder.quantity)
             )
+            # Log Wip
+            wip = self.stores.wip[product].level
+            self.log_product.wip_log[product].append((self.env.now, wip))
+            # Log resource queue
+            if self.save_queues:
+                if len(self.log_resource.queues[first_resource]) == 0:
+                    queue_qnt = sum(
+                        [
+                            x.quantity
+                            for x in self.stores.resource_input[first_resource].items
+                        ]
+                    )
+                else:
+                    queue_qnt = self.log_resource.queues[first_resource][-1][1]
+                    queue_qnt += productionOrder.quantity
+                self.log_resource.queues[first_resource].append(
+                    (
+                        self.env.now,
+                        queue_qnt,
+                    )
+                )
 
     def _start_resources(self) -> None:
         self.machine_down: Dict[str, simpy.Event] = {}
@@ -273,18 +292,19 @@ class FactorySimulation(ABC):
                 yield self.stores.resource_transport[resource].get()
                 yield self.stores.finished_goods[product].put(productionOrder.quantity)
                 yield self.stores.wip[product].get(productionOrder.quantity)
-                # Log Wip
-                wip = self.stores.wip[product].level
-                self.log_product.wip_log[product].append((self.env.now, wip))
-                # Log FG
-                fg_level = self.stores.finished_goods[product].level
-                self.log_product.fg_log[product].append((self.env.now, fg_level))
 
                 # Log flow time
                 if self.save_logs and self.warmup <= self.env.now:
                     self.log_product.flow_time[product].append(
                         (self.env.now, self.env.now - productionOrder.released)
                     )
+                    # Log Wip
+                    wip = self.stores.wip[product].level
+                    self.log_product.wip_log[product].append((self.env.now, wip))
+                    # Log FG
+                    fg_level = self.stores.finished_goods[product].level
+                    self.log_product.fg_log[product].append((self.env.now, fg_level))
+
             # Order to next resource
             else:
                 process_id = productionOrder.process_finished
@@ -294,6 +314,23 @@ class FactorySimulation(ABC):
 
                 yield self.stores.resource_transport[resource].get()
                 yield self.stores.resource_input[next_resource].put(productionOrder)
+                if self.warmup <= self.env.now and self.save_logs and self.save_queues:
+                    if len(self.log_resource.queues[next_resource]) == 0:
+                        queue_qnt = sum(
+                            [
+                                x.quantity
+                                for x in self.stores.resource_input[next_resource].items
+                            ]
+                        )
+                    else:
+                        queue_qnt = self.log_resource.queues[next_resource][-1][1]
+                        queue_qnt += productionOrder.quantity
+                    self.log_resource.queues[next_resource].append(
+                        (
+                            self.env.now,
+                            queue_qnt,
+                        )
+                    )
 
     def _production_system(self, resource):
         last_process = None
@@ -305,6 +342,20 @@ class FactorySimulation(ABC):
             # Get order from queue
             productionOrder: ProductionOrder = yield from self.order_selection(resource)
 
+            if self.warmup <= self.env.now and self.save_logs and self.save_queues:
+                if len(self.log_resource.queues[resource]) == 0:
+                    queue_qnt = sum(
+                        [x.quantity for x in self.stores.resource_input[resource].items]
+                    )
+                else:
+                    queue_qnt = self.log_resource.queues[resource][-1][1]
+                    queue_qnt -= productionOrder.quantity
+                self.log_resource.queues[resource].append(
+                    (
+                        self.env.now,
+                        queue_qnt,
+                    )
+                )
             yield self.stores.resource_processing[resource].put(productionOrder)
 
             product = productionOrder.product
