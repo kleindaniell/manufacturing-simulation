@@ -6,10 +6,10 @@ from typing import Any, Dict, List
 import pandas as pd
 import yaml
 
-from rlsim.engine.cli_config import create_experiment_parser
-from rlsim.engine.utils import DistributionGenerator
-from rlsim.engine.utils import load_yaml
-from rlsim.factory_sim import FactorySimulation
+from manusim.engine.cli_config import create_experiment_parser
+from manusim.engine.utils import DistributionGenerator
+from manusim.engine.utils import load_yaml
+from manusim.factory_sim import FactorySimulation
 
 
 class ExperimentRunner:

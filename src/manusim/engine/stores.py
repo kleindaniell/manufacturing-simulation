@@ -4,7 +4,7 @@ import numpy as np
 import pandas as pd
 import simpy
 
-from rlsim.engine.orders import ProductionOrder, DemandOrder
+from manusim.engine.orders import ProductionOrder, DemandOrder
 
 
 class SimulationStores:

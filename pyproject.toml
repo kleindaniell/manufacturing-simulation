@@ -3,7 +3,7 @@ requires = ["setuptools", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "rlsim"
+name = "manusim"
 version = "0.1.0"
 description = "Discret-event simulation of a job shop scheduling for reinforcement learning"
 authors = [

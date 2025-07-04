@@ -7,11 +7,11 @@ from pathlib import Path
 import json
 import yaml
 
-from rlsim.engine.cli_config import create_simulation_parser
-from rlsim.engine.logs import ProductLogs, ResourceLogs, GeneralLogs
-from rlsim.engine.orders import DemandOrder, ProductionOrder
-from rlsim.engine.stores import SimulationStores
-from rlsim.engine.utils import DistributionGenerator, load_yaml
+from manusim.engine.cli_config import create_simulation_parser
+from manusim.engine.logs import ProductLogs, ResourceLogs, GeneralLogs
+from manusim.engine.orders import DemandOrder, ProductionOrder
+from manusim.engine.stores import SimulationStores
+from manusim.engine.utils import DistributionGenerator, load_yaml
 
 from time import time
 
@@ -656,19 +656,19 @@ if __name__ == "__main__":
     config_path = (
         args_dict["config"]
         if args_dict["config"] is not None
-        else Path("src/rlsim/config/config.yaml")
+        else Path("src/manusim/config/config.yaml")
     )
 
     product_path = (
         args_dict["products"]
         if args_dict["products"] is not None
-        else Path("src/rlsim/config/products.yaml")
+        else Path("src/manusim/config/products.yaml")
     )
 
     resource_path = (
         args_dict["resources"]
         if args_dict["resources"] is not None
-        else Path("src/rlsim/config/resources.yaml")
+        else Path("src/manusim/config/resources.yaml")
     )
 
     config = load_yaml(config_path)
