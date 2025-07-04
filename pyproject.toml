@@ -15,7 +15,8 @@ maintainers = [
 dependencies = [
     "simpy",
     "numpy",
-    "pandas"
+    "pandas",
+    "pyyaml
 ]
 requires-python = ">= 3.11"
 readme = {file = "README.txt", content-type = "text/markdown"}
