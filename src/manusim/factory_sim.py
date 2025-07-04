@@ -26,7 +26,6 @@ class FactorySimulation(ABC):
         print_mode: Literal["status", "metrics", "all"] = "metrics",
         seed: int = None,
         custom_logs: dict = None,
-        queue_order_selection: Callable = None,
     ):
         self.config: Dict[str, Any] = config
         self.resources_config: Dict[str, dict] = resources
@@ -34,7 +33,6 @@ class FactorySimulation(ABC):
         self.seed = seed
         self.print_mode = print_mode
         self.custom_logs = custom_logs
-        self.queue_order_selection = queue_order_selection
 
         self.run_until = self.config.get("run_until", None)
         if self.run_until is None:
@@ -116,7 +114,7 @@ class FactorySimulation(ABC):
         # self.env.process(register_product_log())
 
     def _create_custom_logs(self):
-        pass
+        return {}
 
     def _register_custom_logs(self):
         pass
