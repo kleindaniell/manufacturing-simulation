@@ -16,7 +16,7 @@ dependencies = [
     "simpy",
     "numpy",
     "pandas",
-    "pyyaml
+    "pyyaml"
 ]
 requires-python = ">= 3.11"
 readme = {file = "README.txt", content-type = "text/markdown"}
