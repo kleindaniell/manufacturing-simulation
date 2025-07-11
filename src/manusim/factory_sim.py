@@ -223,9 +223,9 @@ class FactorySimulation(ABC):
                 )
 
     def _start_resources(self) -> None:
-        self.machine_down: Dict[str, simpy.Event] = {}
         self.resources: Dict[str, simpy.Resource] = {}
-
+        self.tbf: Dict[str, float] = {}
+        self.utilization_to_fail: Dict[str, float] = {}
         for resource in self.resources_config:
             resource_config: dict = self.resources_config.get(resource)
             quantity = resource_config.get("quantity", 1)
@@ -234,39 +234,38 @@ class FactorySimulation(ABC):
             self.resources[resource] = simpy.Resource(self.env, quantity)
 
             # Initialize breakdown state
-            self.machine_down[resource] = self.env.event()
-            self.machine_down[resource].succeed()
+            resource_config = self.resources_config[resource]
+            tbf_config = resource_config.get("tbf", None)
+            self.tbf[resource] = (
+                self._get_breakdown_time(tbf_config) if tbf_config else float("inf")
+            )
+            self.utilization_to_fail[resource] = 0
 
             # Start resource process
-            if self.resources_config[resource].get(
-                "tbf", None
-            ) and self.resources_config[resource].get("ttr", None):
-                self.env.process(self._breakdowns(resource))
-
             self.env.process(self._transportation(resource))
             self.env.process(self._production_system(resource))
 
     def _breakdowns(self, resource):
         """Handle resources breakdowns"""
         resource_config = self.resources_config[resource]
-        while True:
-            # Get breakdown parameters
-            tbf = self._get_breakdown_time(resource_config["tbf"])
-            ttr = self._get_breakdown_time(resource_config["ttr"])
-            # Wait for breakdown
-            yield self.env.timeout(tbf)
-            # Start breakdown
-            self.machine_down[resource] = self.env.event()
-            breakdown_start = self.env.now
-            # Repair time
-            yield self.env.timeout(ttr)
-            self.machine_down[resource].succeed()
-            breakdown_end = self.env.now
-            # Log breakdown
-            if self.env.now >= self.warmup and self.save_logs:
-                self.log_resource.breakdowns[resource].append(
-                    (breakdown_start, round(breakdown_end - breakdown_start, 6))
-                )
+
+        # Start breakdown
+        breakdown_start = self.env.now
+
+        # Repair time
+        ttr = self._get_breakdown_time(resource_config["ttr"])
+        yield self.env.timeout(ttr)
+        breakdown_end = self.env.now
+
+        # Log breakdown
+        if self.env.now >= self.warmup and self.save_logs:
+            self.log_resource.breakdowns[resource].append(
+                (breakdown_start, round(breakdown_end - breakdown_start, 6))
+            )
+
+        # Set new time between fail and reset utilization
+        self.tbf[resource] = self._get_breakdown_time(resource_config["tbf"])
+        self.utilization_to_fail[resource] = 0
 
     def _get_breakdown_time(self, breakdown_config: dict) -> float:
         """Get breakdown time from configuration"""
@@ -333,9 +332,9 @@ class FactorySimulation(ABC):
     def _production_system(self, resource):
         last_process = None
         last_product = None
-
         while True:
-            yield self.machine_down[resource]
+            if self.utilization_to_fail[resource] >= self.tbf[resource]:
+                yield from self._breakdowns(resource)
 
             # Get order from queue
             productionOrder: ProductionOrder = yield from self.order_selection(resource)
@@ -400,16 +399,21 @@ class FactorySimulation(ABC):
 
                     yield self.env.timeout(processing_time)
 
+                end_time = self.env.now
+                utilization = round(end_time - start_time, 6)
+
+                # Update utilization to fail
+                self.utilization_to_fail[resource] += utilization
+
                 # Register data in order
                 productionOrder.process_finished += 1
 
-                end_time = self.env.now
                 yield self.stores.resource_processing[resource].get()
                 yield self.stores.resource_finished[resource].put(productionOrder)
                 yield self.stores.resource_output[resource].put(productionOrder)
                 if self.env.now >= self.warmup and self.save_logs:
                     self.log_resource.utilization[resource].append(
-                        (self.env.now, round(end_time - start_time, 6))
+                        (self.env.now, utilization)
                     )
 
     def order_selection(self, resource):
