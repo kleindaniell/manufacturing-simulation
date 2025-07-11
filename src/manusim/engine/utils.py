@@ -38,7 +38,7 @@ class DistributionGenerator:
         else:
             raise ValueError(f"Unknowh distribution type {distribution}")
 
-        return np.float32(value)
+        return max(0, np.float32(value))
 
     def random_int(self, start=0, end=999999) -> int:
         return self.rng.randint(a=start, b=end)
