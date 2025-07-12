@@ -60,7 +60,7 @@ class ProductLogs(BaseLogs):
             df_var.columns.name = None
             df_var.loc["mean", :] = df_var.mean()
             df_var.loc["total", :] = df_var.sum()
-            df_var = df_var.fillna(value=0)
+            # df_var = df_var.fillna(value=0)
             df_var = np.round(df_var, 0).astype(np.int32)
             df_result = (
                 df_var.copy()
@@ -74,7 +74,7 @@ class ProductLogs(BaseLogs):
             df_var.columns.name = None
             df_var.loc["mean", :] = df_var.mean()
             df_var.loc["total", :] = df_tmp["value"].mean()
-            df_var = df_var.fillna(value=0)
+            # df_var = df_var.fillna(value=0)
             df_var = np.round(df_var, 3).astype(np.float32)
             df_result = (
                 df_var.copy()
@@ -91,14 +91,14 @@ class ProductLogs(BaseLogs):
             df_var.loc["total", :] = (
                 df_tmp[["time", "value"]].groupby("time").sum()["value"].mean()
             )
-            df_var = df_var.fillna(value=0)
+            # df_var = df_var.fillna(value=0)
             df_result = (
                 df_var.copy()
                 if df_result.empty
                 else pd.concat([df_result, df_var], axis=1)
             )
 
-        return df_result.fillna(0)
+        return df_result
 
 
 class ResourceLogs(BaseLogs):
@@ -123,7 +123,7 @@ class ResourceLogs(BaseLogs):
             df_var = df_tmp.pivot_table("value", "resource", "variable", "sum")
             df_var.columns.name = None
             df_var.loc["mean", :] = df_var.mean()
-            df_var = df_var.fillna(value=0)
+            # df_var = df_var.fillna(value=0)
             df_var = np.round(df_var, 3).astype(np.float32)
             df_result = (
                 df_var.copy()
@@ -138,7 +138,7 @@ class ResourceLogs(BaseLogs):
                 df_var.columns.name = None
                 df_var.columns = [f"{var}_mean"]
                 df_var.loc["mean", :] = df_var.mean()
-                df_var = df_var.fillna(value=0)
+                # df_var = df_var.fillna(value=0)
                 df_var = np.round(df_var, 3).astype(np.float32)
                 df_result = (
                     df_var.copy()
@@ -153,13 +153,13 @@ class ResourceLogs(BaseLogs):
                 df_var.columns.name = None
                 df_var.columns = [f"{var}_count"]
                 df_var.loc["mean", :] = df_var.mean()
-                df_var = df_var.fillna(value=0)
+                # df_var = df_var.fillna(value=0)
                 df_result = (
                     df_var.copy()
                     if df_result.empty
                     else pd.concat([df_result, df_var], axis=1)
                 )
-        return df_result.fillna(0)
+        return df_result
 
 
 class GeneralLogs(BaseLogs):
