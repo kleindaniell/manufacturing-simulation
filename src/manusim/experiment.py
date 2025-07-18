@@ -6,9 +6,7 @@ from typing import Any, Dict, List
 import pandas as pd
 import yaml
 
-from manusim.engine.cli_config import create_experiment_parser
 from manusim.engine.utils import DistributionGenerator
-from manusim.engine.utils import load_yaml
 from manusim.factory_sim import FactorySimulation
 
 
@@ -145,61 +143,3 @@ class ExperimentRunner:
         print(f"Max elapsed time: {results_df['elapsed_time'].max():.4f} seconds")
         print(f"Results saved to: {self.save_folder_path}")
         print("=" * 50)
-
-
-def main():
-    """Main execution function."""
-    parser = create_experiment_parser()
-    args = parser.parse_args()
-
-    # Determine paths
-    if args.save_folder is None:
-        raise ValueError("Experiment folder not specified")
-
-    save_folder = args.save_folder
-    config_path = args.config
-    products_path = args.products
-    resources_path = args.resources
-    # Load configurations
-    try:
-        config = load_yaml(config_path)
-        resources_cfg = load_yaml(resources_path)
-        products_cfg = load_yaml(products_path)
-    except FileNotFoundError as e:
-        print(f"Configuration file not found: {e}")
-        return 1
-    except Exception as e:
-        print(f"Error loading configuration: {e}")
-        return 1
-
-    sim = FactorySimulation(
-        config=config,
-        resources=resources_cfg,
-        products=products_cfg,
-        save_logs=True,
-        print_mode="metrics",
-        seed=args.exp_seed,
-    )
-
-    # Create and run experiment
-    # try:
-    experiment = ExperimentRunner(
-        simulation=sim,
-        number_of_runs=args.number_of_runs,
-        save_folder_path=save_folder,
-        run_name=args.name,
-        seed=args.exp_seed,
-    )
-    experiment.run_experiment()
-    #     return 0
-
-    # except KeyboardInterrupt:
-    #     print("\nExperiment interrupted by user")
-    #     return 1
-    # except Exception as e:
-    #     print(f"Experiment failed: {e}")
-    #     return 1
-
-
-if __name__ == "__main__":
-    exit(main())

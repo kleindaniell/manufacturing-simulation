@@ -7,11 +7,10 @@ from pathlib import Path
 import json
 import yaml
 
-from manusim.engine.cli_config import create_simulation_parser
 from manusim.engine.logs import ProductLogs, ResourceLogs, GeneralLogs
 from manusim.engine.orders import DemandOrder, ProductionOrder
 from manusim.engine.stores import SimulationStores
-from manusim.engine.utils import DistributionGenerator, load_yaml
+from manusim.engine.utils import DistributionGenerator
 
 from time import time
 
@@ -612,27 +611,6 @@ class FactorySimulation(ABC):
         general_log = self.log_general.to_dataframe()
         general_log.to_csv(save_path / "general_log.csv", index=False)
 
-    def save_params(self, save_folder_path: Path) -> None:
-        """Save params to folder"""
-        save_folder_path.mkdir(exist_ok=True, parents=True)
-        # Save config
-        config_path = save_folder_path / "config.yaml"
-        self._save_yaml(self.config, config_path)
-        # Save products
-        products_path = save_folder_path / "products.yaml"
-        self._save_yaml(self.products_config, products_path)
-        # Save resources
-        resources_path = save_folder_path / "resources.yaml"
-        self._save_yaml(self.resources_config, resources_path)
-
-    def _save_json(self, data: dict, save_path: Path) -> None:
-        with open(save_path, "w") as file:
-            json.dump(data, file, indent=4)
-
-    def _save_yaml(self, data: dict, save_path: Path) -> None:
-        with open(save_path, "w") as file:
-            yaml.dump(data, file, default_flow_style=False)
-
     def reset_simulation(self, seed) -> None:
         """Reset simulation"""
         self.seed = seed
@@ -646,42 +624,3 @@ class FactorySimulation(ABC):
 
     def _start_custom_process(self):
         pass
-
-
-if __name__ == "__main__":
-    from pathlib import Path
-
-    parser = create_simulation_parser()
-    args = parser.parse_args()
-    args_dict = vars(args)
-
-    config_path = (
-        args_dict["config"]
-        if args_dict["config"] is not None
-        else Path("src/manusim/config/config.yaml")
-    )
-
-    product_path = (
-        args_dict["products"]
-        if args_dict["products"] is not None
-        else Path("src/manusim/config/products.yaml")
-    )
-
-    resource_path = (
-        args_dict["resources"]
-        if args_dict["resources"] is not None
-        else Path("src/manusim/config/resources.yaml")
-    )
-
-    config = load_yaml(config_path)
-    products = load_yaml(product_path)
-    resources = load_yaml(resource_path)
-    sim = FactorySimulation(
-        config,
-        resources,
-        products,
-        save_logs=args_dict["save_logs"],
-        print_mode="metrics",
-        seed=123,
-    )
-    elapsed_time = sim.run_simulation()
