@@ -22,7 +22,6 @@ The project is organized as follows:
     -   `conf/`: Contains the configuration files for the example simulation.
 -   `notebooks/`: Contains Jupyter notebooks for data analysis and visualization.
 -   `src/manusim/`: Contains the main source code for the simulation engine.
-    -   `config/`: Contains default configuration files for Hydra.
     -   `engine/`: Contains the core simulation engine components.
     -   `experiment.py`: Defines the `ExperimentRunner` class for running multiple simulations.
     -   `factory_sim.py`: Defines the main `FactorySimulation` class.
