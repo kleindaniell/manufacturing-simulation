@@ -40,8 +40,8 @@ The project is organized as follows:
 1.  Clone the repository:
 
     ```bash
-    git clone https://github.com/kleindaniell/jobshop-simulation.git
-    cd jobshop-simulation
+    git clone https://github.com/kleindaniell/manufacturing-simulation.git
+    cd manufacturing-simulation
     ```
 
 2.  Install the dependencies:
