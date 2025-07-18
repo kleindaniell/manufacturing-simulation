@@ -1,0 +1,27 @@
+defaults:
+  - _self_
+  - products: products
+  - resources: resources
+
+# Experiment configuration
+experiment:
+  number_of_runs: 1
+  name: "example"
+  save_folder: "data/experiments"
+  exp_seed: 123
+
+# Simulation configuration
+simulation:
+  run_until: 1000
+  warmup: 50
+  log_interval: 24
+  save_logs: True
+  save_queues: True
+  monitor_interval: 500
+  monitor_warmup: 0
+  print_mode: "metrics"
+  delivery_mode: "asReady"
+
+# hydra:
+#   run:
+#     dir: .
