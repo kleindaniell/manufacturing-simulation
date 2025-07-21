@@ -7,21 +7,24 @@ defaults:
 experiment:
   number_of_runs: 1
   name: "example"
-  save_folder: "data/experiments"
+  save_logs: False
   exp_seed: 123
 
 # Simulation configuration
 simulation:
   run_until: 1000
   warmup: 50
-  log_interval: 24
-  save_logs: True
-  save_queues: True
   monitor_interval: 500
   monitor_warmup: 0
-  print_mode: "metrics"
   delivery_mode: "asReady"
+  log_queue: True
+  print_mode: "all"
+  
+# Hydra config
+hydra:
+  run:
+    dir: data/experiments/${now:%y%m%d%H%M}_${experiment.name}
+  sweep:
+    dir: data/experiments
+    subdir: ${now:%y%m%d%H%M}_${experiment.name}_${hydra.job.num}
 
-# hydra:
-#   run:
-#     dir: .

@@ -1,18 +1,15 @@
 from abc import ABC
+from pathlib import Path
+from time import time
 from typing import Any, Dict, Literal
 
 import numpy as np
 import simpy
-from pathlib import Path
-import json
-import yaml
 
-from manusim.engine.logs import ProductLogs, ResourceLogs, GeneralLogs
+from manusim.engine.logs import GeneralLogs, ProductLogs, ResourceLogs
 from manusim.engine.orders import DemandOrder, ProductionOrder
 from manusim.engine.stores import SimulationStores
 from manusim.engine.utils import DistributionGenerator
-
-from time import time
 
 
 class FactorySimulation(ABC):
@@ -21,30 +18,30 @@ class FactorySimulation(ABC):
         config: dict,
         resources: dict,
         products: dict,
-        save_logs: bool = True,
         print_mode: Literal["status", "metrics", "all"] = "metrics",
         seed: int = None,
-        custom_logs: dict = None,
     ):
         self.config: Dict[str, Any] = config
         self.resources_config: Dict[str, dict] = resources
         self.products_config: Dict[str, dict] = products
         self.seed = seed
         self.print_mode = print_mode
-        self.custom_logs = custom_logs
 
+        # Load config
         self.run_until = self.config.get("run_until", None)
         if self.run_until is None:
             raise ValueError("run_until must be specified")
+
         self.warmup = self.config.get("warmup", 0)
+
         self.monitor_warmup = self.config.get("monitor_warmup", self.warmup)
         self.monitor_interval = self.config.get(
             "monitor_interval", int(self.run_until / 4)
         )
+
         self.delivery_mode = self.config.get("delivery_mode", "asReady")
-        self.log_interval = self.config.get("log_interval", 72)
-        self.save_logs = self.config.get("save_logs", save_logs)
-        self.save_queues = self.config.get("save_queues", save_logs)
+
+        self.log_queues = self.config.get("log_queues", False)
 
         self._initiate_environment()
 
@@ -64,11 +61,21 @@ class FactorySimulation(ABC):
         self._init_random_generators()
 
         # Start Simulation processes
+        self._warmup_period()
         self._start_resources()
         self._start_products()
         self._run_monitor()
         self._start_custom_process()
         self._run_scheduler()
+
+    def _warmup_period(self):
+        self.warmup_finished = False
+
+        def warmup():
+            yield self.env.timeout(self.warmup)
+            self.warmup_finished = True
+
+        self.env.process(warmup())
 
     def _init_random_generators(self) -> None:
         """Initialize random number generators for different purposes"""
@@ -78,9 +85,10 @@ class FactorySimulation(ABC):
 
     def _init_loggint(self) -> None:
         """Initialize logging components"""
+        # Custom logs
         custom_logs = self._create_custom_logs()
-
         product_custom_logs = custom_logs.get("products", {})
+
         self.log_product = ProductLogs(
             self.products_config.keys(), **product_custom_logs
         )
@@ -91,31 +99,14 @@ class FactorySimulation(ABC):
         general_custom_logs = custom_logs.get("general", {})
         self.log_general = GeneralLogs(**general_custom_logs)
 
-        if self.save_logs:
-            self._register_log()
-            self._register_custom_logs()
-
-    def _register_log(self) -> None:
-        def register_product_log():
-            yield self.env.timeout(self.warmup)
-            while True:
-                for product in self.products_config.keys():
-                    # Log finished goods level
-                    fg_level = self.stores.finished_goods[product].level
-                    self.log_product.fg_log[product].append((self.env.now, fg_level))
-                    # Log WIP
-                    wip = self.stores.wip[product].level
-                    self.log_product.wip_log[product].append((self.env.now, wip))
-
-                yield self.env.timeout(self.log_interval)
-
-        pass
-        # self.env.process(register_product_log())
+        self._register_custom_logs()
 
     def _create_custom_logs(self):
+        """Create custom logs if needed"""
         return {}
 
     def _register_custom_logs(self):
+        """Register custom logs created"""
         pass
 
     def _start_products(self):
@@ -195,7 +186,7 @@ class FactorySimulation(ABC):
         yield self.stores.wip[product].put(productionOrder.quantity)
 
         # Log release products
-        if self.warmup <= self.env.now and self.save_logs:
+        if self.warmup_finished:
             self.log_product.released[product].append(
                 (self.env.now, productionOrder.quantity)
             )
@@ -203,7 +194,7 @@ class FactorySimulation(ABC):
             wip = self.stores.wip[product].level
             self.log_product.wip_log[product].append((self.env.now, wip))
             # Log resource queue
-            if self.save_queues:
+            if self.log_queues:
                 if len(self.log_resource.queues[first_resource]) == 0:
                     queue_qnt = sum(
                         [
@@ -257,7 +248,7 @@ class FactorySimulation(ABC):
         breakdown_end = self.env.now
 
         # Log breakdown
-        if self.env.now >= self.warmup and self.save_logs:
+        if self.warmup_finished:
             self.log_resource.breakdowns[resource].append(
                 (breakdown_start, round(breakdown_end - breakdown_start, 6))
             )
@@ -290,7 +281,7 @@ class FactorySimulation(ABC):
                 yield self.stores.wip[product].get(productionOrder.quantity)
 
                 # Log flow time
-                if self.save_logs and self.warmup <= self.env.now:
+                if self.warmup_finished:
                     self.log_product.flow_time[product].append(
                         (self.env.now, self.env.now - productionOrder.released)
                     )
@@ -310,7 +301,7 @@ class FactorySimulation(ABC):
 
                 yield self.stores.resource_transport[resource].get()
                 yield self.stores.resource_input[next_resource].put(productionOrder)
-                if self.warmup <= self.env.now and self.save_logs and self.save_queues:
+                if self.warmup_finished and self.log_queues:
                     if len(self.log_resource.queues[next_resource]) == 0:
                         queue_qnt = sum(
                             [
@@ -338,7 +329,7 @@ class FactorySimulation(ABC):
             # Get order from queue
             productionOrder: ProductionOrder = yield from self.order_selection(resource)
 
-            if self.warmup <= self.env.now and self.save_logs and self.save_queues:
+            if self.warmup_finished and self.log_queues:
                 if len(self.log_resource.queues[resource]) == 0:
                     queue_qnt = sum(
                         [x.quantity for x in self.stores.resource_input[resource].items]
@@ -368,7 +359,7 @@ class FactorySimulation(ABC):
                     "params", [0]
                 )
                 setup_time = self.rnd_process.random_number(setup_dist, setup_params)
-                if self.env.now >= self.warmup and self.save_logs:
+                if self.warmup_finished:
                     self.log_resource.setups[resource].append(
                         (self.env.now, setup_time)
                     )
@@ -391,7 +382,7 @@ class FactorySimulation(ABC):
 
                 start_time = self.env.now
 
-                for part in range(int(order_quantity)):
+                for _ in range(int(order_quantity)):
                     processing_time = self.rnd_process.random_number(
                         process_time_dist, process_time_params
                     )
@@ -410,7 +401,7 @@ class FactorySimulation(ABC):
                 yield self.stores.resource_processing[resource].get()
                 yield self.stores.resource_finished[resource].put(productionOrder)
                 yield self.stores.resource_output[resource].put(productionOrder)
-                if self.env.now >= self.warmup and self.save_logs:
+                if self.warmup_finished:
                     self.log_resource.utilization[resource].append(
                         (self.env.now, utilization)
                     )
@@ -441,16 +432,18 @@ class FactorySimulation(ABC):
 
         if self.stores.finished_goods[product].level >= quantity:
             yield self.stores.finished_goods[product].get(quantity)
+            demand_order.delivered = self.env.now
+
             # Placeholder for custom action when fg is reduced
             self.process_fg_reduce(product)
-            if self.save_logs and self.env.now > self.warmup:
-                fg_level = self.stores.finished_goods[product].level
-                self.log_product.fg_log[product].append((self.env.now, fg_level))
-                self.log_product.delivered_ontime[product].append(
-                    (self.env.now, quantity)
-                )
-        elif self.env.now >= self.warmup and self.save_logs:
-            self.log_product.lost_sales[product].append((self.env.now, quantity))
+
+        # Log orders
+        if self.warmup_finished:
+            fg_level = self.stores.finished_goods[product].level
+            self.log_product.fg_log[product].append((self.env.now, fg_level))
+
+            self._log_delivery_performance(demand_order)
+            self._log_lead_time(demand_order)
 
     def _delivery_as_ready(self, demand_order: DemandOrder):
         """Handle as-ready delivery mode"""
@@ -459,15 +452,17 @@ class FactorySimulation(ABC):
 
         # Remove from finished goods
         yield self.stores.finished_goods[product].get(quantity)
-        fg_level = self.stores.finished_goods[product].level
-        self.log_product.fg_log[product].append((self.env.now, fg_level))
+
         # Placeholder for custom action when fg is reduced
         self.process_fg_reduce(product)
 
         # Update delivery time and log
         demand_order.delivered = self.env.now
 
-        if self.save_logs and self.env.now >= self.warmup:
+        if self.warmup_finished:
+            fg_level = self.stores.finished_goods[product].level
+            self.log_product.fg_log[product].append((self.env.now, fg_level))
+
             self._log_delivery_performance(demand_order)
             self._log_lead_time(demand_order)
 
@@ -486,15 +481,17 @@ class FactorySimulation(ABC):
 
             # Remove from finished goods
             yield self.stores.finished_goods[product].get(quantity)
-            fg_level = self.stores.finished_goods[product].level
-            self.log_product.fg_log[product].append((self.env.now, fg_level))
+
             # Placeholder for custom action when fg is reduced
             self.process_fg_reduce(product)
 
             # Update delivery time and log
             demand_order.delivered = self.env.now
 
-            if self.save_logs and self.env.now >= self.warmup:
+            if self.warmup_finished:
+                fg_level = self.stores.finished_goods[product].level
+                self.log_product.fg_log[product].append((self.env.now, fg_level))
+
                 self._log_delivery_performance(demand_order)
                 self._log_lead_time(demand_order)
 
@@ -507,12 +504,18 @@ class FactorySimulation(ABC):
         """Log delivery performance metrics"""
         product = demand_order.product
         quantity = demand_order.quantity
-
-        if demand_order.delivered <= demand_order.duedate:
+        delivered = demand_order.delivered
+        duedate = demand_order.duedate
+        # Lost Sales
+        if not delivered:
+            self.log_product.lost_sales[product].append((self.env.now, quantity))
+        # Delivered ontime
+        elif delivered <= duedate:
             self.log_product.delivered_ontime[product].append((self.env.now, quantity))
             earliness = demand_order.duedate - self.env.now
             self.log_product.earliness[product].append((self.env.now, earliness))
-        else:
+        # Delivered late
+        elif delivered > duedate:
             self.log_product.delivered_late[product].append((self.env.now, quantity))
             tardiness = self.env.now - demand_order.duedate
             self.log_product.tardiness[product].append((self.env.now, tardiness))
@@ -536,17 +539,18 @@ class FactorySimulation(ABC):
             end_time = time()
             elapsed_time = end_time - start_time
 
-            print("\n" + "=" * 50)
+            print("\n" + "-" * 50)
+            print("-" * 50)
             print(f"Simulation Time: {self.env.now}")
             print(f"Elapsed Real Time: {elapsed_time:.4f} seconds")
-            print("=" * 50)
+            print("-" * 50)
 
             if self.print_mode == "all":
                 self._print_all_metrics()
             elif self.print_mode == "metrics":
-                self._print_metrics_only()
+                self._print_metrics()
             elif self.print_mode == "status":
-                self._print_status_only()
+                self._print_status()
 
             self.print_custom_metrics()
 
@@ -554,26 +558,31 @@ class FactorySimulation(ABC):
 
     def _print_all_metrics(self) -> None:
         """Print all available metrics and status"""
+        self._print_status()
+        self._print_metrics()
+
+    def _print_status(self) -> None:
+        """Print only system status"""
+
         print("SYSTEM STATUS:")
         snapshot = self.stores.simulation_snapshot()
         if not snapshot.empty:
             print(snapshot)
-            print("\n")
+        else:
+            print("Empty metrics")
+        print("-" * 50)
 
-        self._print_metrics_only()
-
-    def _print_metrics_only(self) -> None:
+    def _print_metrics(self) -> None:
         """Print only performance metrics"""
 
         print("PRODUCT METRICS:")
         products = self.log_product.calculate_metrics()
         if not products.empty:
             print(products)
-            print("\n")
         else:
-            print("Empty metrics")
-            print("\n")
+            print("Empty products metrics")
 
+        print("-" * 50)
         print("RESOURCE METRICS:")
         resources = self.log_resource.calculate_metrics()
         if not resources.empty:
@@ -582,34 +591,32 @@ class FactorySimulation(ABC):
                 resources.loc[:, "utilization"] / sim_elapsed_time
             )
             print(resources)
-            print("\n")
         else:
-            print("Empty metrics")
-            print("\n")
-
-    def _print_status_only(self) -> None:
-        """Print only system status"""
-        print("SYSTEM STATUS:")
-        snapshot = self.stores.simulation_snapshot()
-        if not snapshot.empty:
-            print(snapshot)
-            print("\n")
-        else:
-            print("Empty metrics")
-            print("\n")
+            print("Empty resource metrics")
+        print("-" * 50)
 
     def print_custom_metrics(self):
         pass
+
+    def save_metrics(self, save_path: Path) -> None:
+        products = self.log_product.calculate_metrics()
+        resources = self.log_resource.calculate_metrics()
+
+        resources.loc[:, "utilization"] = resources.loc[:, "utilization"] / self.env.now
+
+        save_path.mkdir(exist_ok=True, parents=True)
+        products.to_csv(save_path / "metrics_products.csv")
+        resources.to_csv(save_path / "metrics_resources.csv")
 
     def save_history_logs(self, save_path: Path) -> None:
         """Save logs to folder"""
         save_path.mkdir(exist_ok=True, parents=True)
         products_log = self.log_product.to_dataframe()
-        products_log.to_csv(save_path / "products_log.csv", index=False)
+        products_log.to_csv(save_path / "logs_products.csv", index=False)
         resources_log = self.log_resource.to_dataframe()
-        resources_log.to_csv(save_path / "resources_log.csv", index=False)
+        resources_log.to_csv(save_path / "logs_resources.csv", index=False)
         general_log = self.log_general.to_dataframe()
-        general_log.to_csv(save_path / "general_log.csv", index=False)
+        general_log.to_csv(save_path / "logs_general.csv", index=False)
 
     def reset_simulation(self, seed) -> None:
         """Reset simulation"""
