@@ -605,19 +605,21 @@ class FactorySimulation(ABC):
         products = self.log_product.calculate_metrics()
         resources = self.log_resource.calculate_metrics()
 
+        resources.loc[:, "utilization"] = resources.loc[:, "utilization"] / self.env.now
+
         save_path.mkdir(exist_ok=True, parents=True)
-        products.to_csv(save_path / "products_metrics.csv")
-        resources.to_csv(save_path / "resources_metrics.csv")
+        products.to_csv(save_path / "metrics_products.csv")
+        resources.to_csv(save_path / "metrics_resources.csv")
 
     def save_history_logs(self, save_path: Path) -> None:
         """Save logs to folder"""
         save_path.mkdir(exist_ok=True, parents=True)
         products_log = self.log_product.to_dataframe()
-        products_log.to_csv(save_path / "products_log.csv", index=False)
+        products_log.to_csv(save_path / "logs_products.csv", index=False)
         resources_log = self.log_resource.to_dataframe()
-        resources_log.to_csv(save_path / "resources_log.csv", index=False)
+        resources_log.to_csv(save_path / "logs_resources.csv", index=False)
         general_log = self.log_general.to_dataframe()
-        general_log.to_csv(save_path / "general_log.csv", index=False)
+        general_log.to_csv(save_path / "logs_general.csv", index=False)
 
     def reset_simulation(self, seed) -> None:
         """Reset simulation"""
