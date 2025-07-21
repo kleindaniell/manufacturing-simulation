@@ -5,6 +5,7 @@ from typing import Any, Dict, List
 
 import pandas as pd
 import yaml
+from hydra.core.hydra_config import HydraConfig
 
 from manusim.engine.utils import DistributionGenerator
 from manusim.factory_sim import FactorySimulation
@@ -17,15 +18,23 @@ class ExperimentRunner:
         self,
         simulation: FactorySimulation,
         number_of_runs: int,
-        save_folder_path: Path,
+        save_folder_path: Path = None,
         run_name: str = None,
+        save_logs: bool = True,
         seed: int = None,
     ):
         self.sim = simulation
         self.number_of_runs = number_of_runs
-        self.save_folder_path = Path(save_folder_path)
         self.run_name = run_name
+        self.save_logs = save_logs
         self.seed = seed
+
+        if save_folder_path:
+            self.save_folder_path = Path(save_folder_path)
+        else:
+            hdcfg = HydraConfig.get()
+            save_path = hdcfg.runtime.output_dir
+            self.save_folder_path = Path(save_path)
 
         self.rng = DistributionGenerator(self.seed)
 
@@ -37,8 +46,7 @@ class ExperimentRunner:
 
     def _create_experiment_folder(self) -> None:
         """Create experiment folder with timestamp"""
-        timestamp = datetime.now().strftime("%y%m%d%H%M")
-        self.save_folder_path = self.save_folder_path / f"{timestamp}_{self.run_name}"
+        # timestamp = datetime.now().strftime("%y%m%d%H%M")
         self.save_folder_path.mkdir(parents=True, exist_ok=True)
 
     def run_experiment(self) -> List[Dict[str, Any]]:
@@ -47,27 +55,29 @@ class ExperimentRunner:
         print(f"Starting experiment with {self.number_of_runs} runs")
         print(f"Results will be saved to: {self.save_folder_path}")
 
-        start_time = time.time()
+        # Utilize experiment seed as first run seed
+        run_seed = self.seed
 
-        for run_id in range(self.number_of_runs):
-            print(f"\n--- Running simulation - {run_id + 1}/{self.number_of_runs} ---")
+        start_time = time.time()
+        for run_id in range(1, self.number_of_runs + 1):
+            print("\n" + "=" * 50)
+            print(f"--- Running simulation - {run_id}/{self.number_of_runs} ---")
+            print("=" * 50)
+            self.sim.reset_simulation(run_seed)
 
             # Create new seed for run
             run_seed = self.rng.random_int()
-            self.sim.reset_simulation(run_seed)
 
             # Run single simulation
             result = self._run_single_simulation(run_id)
             self.results.append(result)
 
-            print("\n")
-            print(f"Run {run_id + 1} completed in {result['elapsed_time']:.4f} seconds")
+            print("\n" + "=" * 50)
+            print(f"Run {run_id} completed in {result['elapsed_time']:.4f} seconds")
+            print("=" * 50)
 
         total_time = time.time() - start_time
         print(f"\nExperiment completed in {total_time:.4f} seconds")
-
-        # Save experiment params
-        self.sim.save_params(self.save_folder_path)
 
         # Save experiment summary
         self._save_experiment_summary(total_time)
@@ -84,8 +94,12 @@ class ExperimentRunner:
         run_folder = self.save_folder_path / f"run_{run_id:03d}"
         run_folder.mkdir(exist_ok=True)
 
+        # Save metrics
+        self.sim.save_metrics(run_folder)
+
         # Save logs
-        self.sim.save_history_logs(run_folder)
+        if self.save_logs:
+            self.sim.save_history_logs(run_folder)
 
         # Save run-specific info
         run_info = {
