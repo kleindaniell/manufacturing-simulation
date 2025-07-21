@@ -7,7 +7,6 @@ defaults:
 experiment:
   number_of_runs: 1
   name: "example"
-  # save_folder: "data/experiments"
   save_logs: False
   exp_seed: 123
 
@@ -21,6 +20,7 @@ simulation:
   log_queue: True
   print_mode: "all"
   
+# Hydra config
 hydra:
   run:
     dir: data/experiments/${now:%y%m%d%H%M}_${experiment.name}
@@ -28,9 +28,3 @@ hydra:
     dir: data/experiments
     subdir: ${now:%y%m%d%H%M}_${experiment.name}_${hydra.job.num}
 
-# hydra:
-#   run:
-#     dir: outputs/${now:%Y-%m-%d}/${now:%H-%M-%S}
-#   sweep:
-#     dir: multirun/${now:%Y-%m-%d}/${now:%H-%M-%S}
-#     subdir: ${hydra.job.num}
