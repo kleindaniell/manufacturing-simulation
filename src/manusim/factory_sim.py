@@ -68,6 +68,11 @@ class FactorySimulation(ABC):
         self._start_custom_process()
         self._run_scheduler()
 
+        self._initiate_custom_env()
+
+    def _initiate_custom_env(self):
+        pass
+
     def _warmup_period(self):
         self.warmup_finished = False
 
@@ -602,7 +607,10 @@ class FactorySimulation(ABC):
         products = self.log_product.calculate_metrics()
         resources = self.log_resource.calculate_metrics()
 
-        resources.loc[:, "utilization"] = resources.loc[:, "utilization"] / self.env.now
+        if "utilization" in resources.columns:
+            resources.loc[:, "utilization"] = (
+                resources.loc[:, "utilization"] / self.env.now
+            )
 
         save_path.mkdir(exist_ok=True, parents=True)
         products.to_csv(save_path / "metrics_products.csv")
