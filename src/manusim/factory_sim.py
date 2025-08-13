@@ -150,7 +150,6 @@ class FactorySimulation(ABC):
                 arived=self.env.now,
                 delivery_mode=self.delivery_mode,
             )
-            # print(f"{self.env.now} - {demandOrder}")
             yield self.stores.inbound_demand_orders.put(demandOrder)
 
     def _run_scheduler(self):
@@ -615,6 +614,9 @@ class FactorySimulation(ABC):
         save_path.mkdir(exist_ok=True, parents=True)
         products.to_csv(save_path / "metrics_products.csv")
         resources.to_csv(save_path / "metrics_resources.csv")
+
+    def save_custom_metrics(self, save_path: Path) -> None:
+        pass
 
     def save_history_logs(self, save_path: Path) -> None:
         """Save logs to folder"""

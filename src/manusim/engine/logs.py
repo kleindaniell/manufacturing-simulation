@@ -18,6 +18,12 @@ class BaseLogs:
                         if field_name:
                             df_tmp[field_name] = key
                         df_list.append(df_tmp)
+            elif isinstance(values, list):
+                df_tmp = pd.DataFrame(values, columns=["time", "value"])
+                df_tmp["variable"] = attr
+                if field_name:
+                    df_tmp[field_name] = key
+                df_list.append(df_tmp)
 
         return (
             pd.concat(df_list, ignore_index=True)
@@ -163,8 +169,8 @@ class ResourceLogs(BaseLogs):
 
 
 class GeneralLogs(BaseLogs):
-    def __init__(self, **kwargs):
-        for key, value in kwargs.items():
+    def __init__(self, **kwagrs):
+        for key, value in kwagrs.items():
             setattr(self, key, value)
 
     def to_dataframe(self) -> pd.DataFrame:

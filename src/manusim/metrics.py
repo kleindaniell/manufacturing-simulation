@@ -19,17 +19,17 @@ class Metrics:
         self, log: Literal["general", "products", "resources", "all"] = "all"
     ) -> None:
         self.general_logs = (
-            self._read_log_files("**/*general_log*")
+            self._read_log_files("**/*logs_general*")
             if log in ["general", "all"]
             else None
         )
         self.products_logs = (
-            self._read_log_files("**/*products_log*")
+            self._read_log_files("**/*logs_products*")
             if log in ["products", "all"]
             else None
         )
         self.resources_logs = (
-            self._read_log_files("**/*resources_log*")
+            self._read_log_files("**/*logs_resources*")
             if log in ["resources", "all"]
             else None
         )

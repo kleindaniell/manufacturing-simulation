@@ -95,6 +95,7 @@ class ExperimentRunner:
 
         # Save metrics
         self.sim.save_metrics(run_folder)
+        self.sim.save_custom_metrics(run_folder)
 
         # Save logs
         if self.save_logs:
