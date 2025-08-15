@@ -5,7 +5,6 @@ from typing import Any, Dict, Literal
 
 import numpy as np
 import simpy
-
 from manusim.engine.logs import GeneralLogs, ProductLogs, ResourceLogs
 from manusim.engine.orders import DemandOrder, ProductionOrder
 from manusim.engine.stores import SimulationStores
@@ -323,6 +322,12 @@ class FactorySimulation(ABC):
                         )
                     )
 
+    def _part_processed(self, product, resource, process):
+        pass
+
+    def _order_processed(self, productionOrder, resource):
+        pass
+
     def _production_system(self, resource):
         last_process = None
         last_product = None
@@ -392,6 +397,7 @@ class FactorySimulation(ABC):
                     )
 
                     yield self.env.timeout(processing_time)
+                    self._part_processed(product, resource, process)
 
                 end_time = self.env.now
                 utilization = round(end_time - start_time, 6)
@@ -405,6 +411,9 @@ class FactorySimulation(ABC):
                 yield self.stores.resource_processing[resource].get()
                 yield self.stores.resource_finished[resource].put(productionOrder)
                 yield self.stores.resource_output[resource].put(productionOrder)
+
+                self._order_processed(productionOrder, resource)
+
                 if self.warmup_finished:
                     self.log_resource.utilization[resource].append(
                         (self.env.now, utilization)
