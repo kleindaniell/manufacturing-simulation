@@ -304,6 +304,9 @@ class FactorySimulation(ABC):
 
                 yield self.stores.resource_transport[resource].get()
                 yield self.stores.resource_input[next_resource].put(productionOrder)
+                self._custom_order_in_resource_input(productionOrder, next_resource)
+
+                # Log queues
                 if self.warmup_finished and self.log_queues:
                     if len(self.log_resource.queues[next_resource]) == 0:
                         queue_qnt = sum(
@@ -322,10 +325,16 @@ class FactorySimulation(ABC):
                         )
                     )
 
-    def _part_processed(self, product, resource, process):
+    def _custom_order_in_resource_input(self, productionOrder, resource):
         pass
 
-    def _order_processed(self, productionOrder, resource):
+    def _custom_order_out_resource_input(self, productionOrder, resource):
+        pass
+    
+    def _custom_part_processed(self, product, resource, process):
+        pass
+
+    def _custom_order_processed(self, productionOrder, resource):
         pass
 
     def _production_system(self, resource):
@@ -337,6 +346,7 @@ class FactorySimulation(ABC):
 
             # Get order from queue
             productionOrder: ProductionOrder = yield from self.order_selection(resource)
+            self._custom_order_out_resource_input(productionOrder, resource)
 
             if self.warmup_finished and self.log_queues:
                 if len(self.log_resource.queues[resource]) == 0:
@@ -397,7 +407,7 @@ class FactorySimulation(ABC):
                     )
 
                     yield self.env.timeout(processing_time)
-                    self._part_processed(product, resource, process)
+                    self._custom_part_processed(product, resource, process)
 
                 end_time = self.env.now
                 utilization = round(end_time - start_time, 6)
@@ -409,10 +419,9 @@ class FactorySimulation(ABC):
                 productionOrder.process_finished += 1
 
                 yield self.stores.resource_processing[resource].get()
-                yield self.stores.resource_finished[resource].put(productionOrder)
                 yield self.stores.resource_output[resource].put(productionOrder)
 
-                self._order_processed(productionOrder, resource)
+                self._custom_order_processed(productionOrder, resource)
 
                 if self.warmup_finished:
                     self.log_resource.utilization[resource].append(
@@ -448,7 +457,7 @@ class FactorySimulation(ABC):
             demand_order.delivered = self.env.now
 
             # Placeholder for custom action when fg is reduced
-            self.process_fg_reduce(product)
+            self._custom_fg_reduced(product)
 
         # Log orders
         if self.warmup_finished:
@@ -467,7 +476,7 @@ class FactorySimulation(ABC):
         yield self.stores.finished_goods[product].get(quantity)
 
         # Placeholder for custom action when fg is reduced
-        self.process_fg_reduce(product)
+        self._custom_fg_reduced(product)
 
         # Update delivery time and log
         demand_order.delivered = self.env.now
@@ -496,7 +505,7 @@ class FactorySimulation(ABC):
             yield self.stores.finished_goods[product].get(quantity)
 
             # Placeholder for custom action when fg is reduced
-            self.process_fg_reduce(product)
+            self._custom_fg_reduced(product)
 
             # Update delivery time and log
             demand_order.delivered = self.env.now
@@ -510,7 +519,7 @@ class FactorySimulation(ABC):
 
         self.env.process(_delivery_order(demand_order))
 
-    def process_fg_reduce(self, product):
+    def _custom_fg_reduced(self, product):
         pass
 
     def _log_delivery_performance(self, demand_order: DemandOrder) -> None:
