@@ -50,10 +50,17 @@ class Logger:
     def get_log(self, variable: str, key: str) -> np.ndarray:
         return getattr(self, variable)[key]
 
-    def get_variable_logs(self, variable: str) -> pd.DataFrame:
+    def get_variable_logs(self, variable: str, saved_logs=False) -> pd.DataFrame:
 
-        variable_logs = getattr(self, variable)
         df_list = []
+        # Read saved logs
+        if saved_logs:
+            df_saved = self.read_saved_logs(variable)
+            if not df_saved.empty:
+                df_list.append(df_saved)
+
+        # Get memory logs
+        variable_logs = getattr(self, variable)
         for key in variable_logs.keys():
             df_temp = self.get_logs(variable, key)
             df_list.append(df_temp)
@@ -61,12 +68,15 @@ class Logger:
         return pd.concat(df_list, ignore_index=True)
 
     def get_logs(self, variable: str, key: str) -> pd.DataFrame:
+
+        # Read memory logs
         df = pd.DataFrame(
             getattr(self, variable)[key][: self.log_index[variable][key]],
             columns=["time", "value"],
         )
         df["variable"] = variable
         df["key"] = key
+
         return df
 
     def save_logs_to_file(self, variable: str, key: str):
@@ -113,3 +123,19 @@ class Logger:
         for variable, value in self.log_index.items():
             for key in value.keys():
                 self.save_logs_to_file(variable=variable, key=key)
+
+    def read_saved_logs(self, variable: str) -> pd.DataFrame:
+
+        file_list = list(self.logs_save_path.rglob(f"**/*log_{variable}*.csv"))
+        df_list = []
+        if len(file_list) > 0:
+            for file_path in file_list:
+                if file_path.is_file():
+                    df_tmp = pd.read_csv(file_path, low_memory=False)
+                    if not df_tmp.empty:
+                        df_list.append(df_tmp)
+
+        if len(df_list) > 0:
+            return pd.concat(df_list, ignore_index=True)
+        else:
+            return pd.DataFrame()

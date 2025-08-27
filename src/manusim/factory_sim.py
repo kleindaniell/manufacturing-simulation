@@ -684,7 +684,7 @@ class FactorySimulation(ABC):
     def print_custom_metrics(self):
         pass
 
-    def products_metrics(self) -> pd.DataFrame:
+    def products_metrics(self, saved_logs=False) -> pd.DataFrame:
         df_list = []
         sum_metrics = [
             MetricProducts.DELIVERED_ONTIME.value,
@@ -693,7 +693,11 @@ class FactorySimulation(ABC):
         ]
 
         for metric in MetricProducts:
-            metric_df = self.logs.get_variable_logs(metric.value)
+
+            metric_df = self.logs.get_variable_logs(
+                variable=metric.value, saved_logs=saved_logs
+            )
+
             if metric.value in sum_metrics:
                 metric_df = metric_df.pivot_table(
                     values="value", index="key", columns="variable", aggfunc="sum"
@@ -706,10 +710,12 @@ class FactorySimulation(ABC):
             df_list.append(metric_df)
         return pd.concat(df_list, axis=1)
 
-    def resources_metrics(self) -> pd.DataFrame:
+    def resources_metrics(self, saved_logs=False) -> pd.DataFrame:
         df_list = []
         for metric in MetricResources:
-            metric_df = self.logs.get_variable_logs(metric.value)
+            metric_df = self.logs.get_variable_logs(
+                variable=metric.value, saved_logs=saved_logs
+            )
 
             if metric.value == "utilization":
                 metric_df = metric_df.pivot_table(
@@ -725,15 +731,15 @@ class FactorySimulation(ABC):
             df_list.append(metric_df)
         return pd.concat(df_list, axis=1)
 
-    def save_metrics(self, save_path: Path) -> None:
-        products_df = self.products_metrics()
-        resources_df = self.resources_metrics()
+    def save_metrics(self, save_path: Path, saved_logs=False) -> None:
+        products_df = self.products_metrics(saved_logs=saved_logs)
+        resources_df = self.resources_metrics(saved_logs=saved_logs)
 
         save_path.mkdir(exist_ok=True, parents=True)
         products_df.to_csv(save_path / "metrics_products.csv")
         resources_df.to_csv(save_path / "metrics_resources.csv")
 
-    def save_custom_metrics(self, save_path: Path) -> None:
+    def save_custom_metrics(self, save_path: Path, saved_logs=False) -> None:
         pass
 
     def reset_simulation(self, seed, log_save_path) -> None:
