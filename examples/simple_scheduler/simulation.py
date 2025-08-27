@@ -7,6 +7,7 @@ from hydra.core.hydra_config import HydraConfig
 from manusim.factory_sim import FactorySimulation
 from manusim.experiment import ExperimentRunner
 from manusim.engine.orders import ProductionOrder
+from manusim.metrics import ExperimentMetrics
 
 
 class NewSimulation(FactorySimulation):
@@ -66,6 +67,15 @@ def main(cfg: DictConfig):
     )
     experiment.run_experiment()
 
+    metrics = ExperimentMetrics(experiment.save_folder_path)
+
+    metrics.read_logs()
+    stats_df = metrics.save_stats(0.95, 0.05)
+    print("=" *50)
+    print("Experiment Stats")
+    print("=" *50)
+    print(stats_df)
+    print("=" *50)
 
 if __name__ == "__main__":
     exit(main())

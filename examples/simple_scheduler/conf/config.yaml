@@ -5,9 +5,9 @@ defaults:
 
 # Experiment configuration
 experiment:
-  number_of_runs: 1
+  number_of_runs: 3
   name: "example"
-  save_logs: False
+  save_logs: True
   exp_seed: 123
 
 # Simulation configuration
@@ -19,6 +19,7 @@ simulation:
   delivery_mode: "asReady"
   log_queue: True
   print_mode: "all"
+  memory_size: 100
   
 # Hydra config
 hydra:
