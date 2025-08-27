@@ -9,23 +9,23 @@ from scipy import stats
 
 
 class MetricProducts(str, Enum):
-    DELIVERED_ONTIME = "delivered_ontime"
-    DELIVERED_LATE: str = "delivered_late"
-    LOST_SALES: str = "lost_sales"
-    FLOW_TIME: str = "flow_time"
-    LEAD_TIME: str = "lead_time"
-    TARDINESS: str = "tardiness"
-    EARLINESS: str = "earliness"
-    WIP: str = "wip"
-    FINISHED_GOODS: str = "finished_goods"
-    RELEASED: str = "released"
+    DELIVERED_ONTIME = "DeliveredOntime"
+    DELIVERED_LATE: str = "DeliveredLate"
+    LOST_SALES: str = "LostSales"
+    FLOW_TIME: str = "FlowTime"
+    LEAD_TIME: str = "LeadTime"
+    TARDINESS: str = "Tardiness"
+    EARLINESS: str = "Earliness"
+    WIP: str = "WIP"
+    FINISHED_GOODS: str = "FinishedGoods"
+    RELEASED: str = "Released"
 
 
 class MetricResources(str, Enum):
-    UTILIZATION: str = "utilization"
-    BREAKDOWN: str = "breakdown"
-    SETUP: str = "setup"
-    QUEUE: str = "queue"
+    UTILIZATION: str = "Utilization"
+    BREAKDOWN: str = "Breakdown"
+    SETUP: str = "Setup"
+    QUEUE: str = "Queue"
 
 
 class ExperimentMetrics:
@@ -43,7 +43,7 @@ class ExperimentMetrics:
         df_list = []
         if log in ["products", "all"]:
             for metric in MetricProducts:
-                glob_pattern = f"**/*log_{metric.value}*"
+                glob_pattern = f"**/*log_*.csv"
                 df_tmp = self._read_log_files(glob_pattern)
                 if not df_tmp.empty:
                     df_list.append(df_tmp)
