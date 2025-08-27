@@ -29,7 +29,7 @@ class MetricResources(str, Enum):
 
 
 class ExperimentMetrics:
-    def __init__(self, experiment_folder: Path, custom_metrics: Enum = None):
+    def __init__(self, experiment_folder: Path, custom_metrics: list = None):
         self.experiment_folder = experiment_folder
         if not isinstance(self.experiment_folder, Path):
             self.experiment_folder = Path(self.experiment_folder).resolve()
@@ -57,7 +57,7 @@ class ExperimentMetrics:
 
         if log in ["general", "all"] and self.custom_metrics:
             for metric in self.custom_metrics:
-                glob_pattern = f"**/*log_{metric.value}*"
+                glob_pattern = f"**/*log_{metric}*"
                 df_tmp = self._read_log_files(glob_pattern)
                 if not df_tmp.empty:
                     df_list.append(df_tmp)
