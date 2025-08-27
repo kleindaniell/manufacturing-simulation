@@ -1,7 +1,6 @@
 from abc import ABC
 from enum import Enum
 from pathlib import Path
-from typing import List, Literal, Union
 
 import numpy as np
 import pandas as pd
@@ -36,38 +35,15 @@ class ExperimentMetrics:
         self.custom_metrics = custom_metrics
         self.logs = pd.DataFrame()
 
-    def read_logs(
-        self, log: Literal["general", "products", "resources", "all"] = "all"
-    ) -> None:
+    def read_logs(self) -> None:
 
-        df_list = []
-        if log in ["products", "all"]:
-            for metric in MetricProducts:
-                glob_pattern = f"**/*log_*.csv"
-                df_tmp = self._read_log_files(glob_pattern)
-                if not df_tmp.empty:
-                    df_list.append(df_tmp)
-
-        if log in ["resources", "all"]:
-            for metric in MetricResources:
-                glob_pattern = f"**/*log_{metric.value}*"
-                df_tmp = self._read_log_files(glob_pattern)
-                if not df_tmp.empty:
-                    df_list.append(df_tmp)
-
-        if log in ["general", "all"] and self.custom_metrics:
-            for metric in self.custom_metrics:
-                glob_pattern = f"**/*log_{metric}*"
-                df_tmp = self._read_log_files(glob_pattern)
-                if not df_tmp.empty:
-                    df_list.append(df_tmp)
-
-        self.logs = pd.concat(df_list, ignore_index=True)
+        glob_pattern = f"**/*log_*.csv"
+        self.logs = self._read_log_files(glob_pattern)
         self.logs["experiment"] = self.experiment_folder.name
 
     def _read_log_files(self, glob_pattern) -> pd.DataFrame:
         file_list = list(self.experiment_folder.rglob(glob_pattern))
-        
+
         if len(file_list) > 0:
             df_list = []
             for file_path in file_list:
@@ -78,7 +54,7 @@ class ExperimentMetrics:
                         df_tmp["run"] = run
                         df_list.append(df_tmp)
 
-        if len(df_list)>0:
+        if len(df_list) > 0:
             return pd.concat(df_list, ignore_index=True)
         else:
             return pd.DataFrame()

@@ -1,5 +1,4 @@
 from abc import ABC
-from enum import Enum
 from pathlib import Path
 from time import time
 from typing import Any, Dict, Literal

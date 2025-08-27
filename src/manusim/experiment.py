@@ -8,7 +8,6 @@ from hydra.core.hydra_config import HydraConfig
 
 from manusim.engine.utils import DistributionGenerator
 from manusim.factory_sim import FactorySimulation
-from manusim.metrics import ExperimentMetrics
 
 
 class ExperimentRunner:
