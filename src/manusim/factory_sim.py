@@ -97,10 +97,10 @@ class FactorySimulation(ABC):
         self.logs = Logger(logs_save_path=self.log_save_path, mem_size=self.memory_size)
 
         for product_metric in MetricProducts:
-            self.logs.create_log(product_metric.value, self.products_config.keys())
+            self.logs.create_log(product_metric.name, self.products_config.keys())
 
         for resource_metric in MetricResources:
-            self.logs.create_log(resource_metric.value, self.resources_config.keys())
+            self.logs.create_log(resource_metric.name, self.resources_config.keys())
 
         self._create_custom_logs()
 
@@ -192,21 +192,21 @@ class FactorySimulation(ABC):
         # Log release products
         if self.warmup_finished:
             self.logs.log(
-                variable=MetricProducts.RELEASED.value,
+                variable=MetricProducts.released.name,
                 key=product,
                 value=(self.env.now, productionOrder.quantity),
             )
             # Log Wip
             wip = self.stores.wip[product].level
             self.logs.log(
-                variable=MetricProducts.WIP.value,
+                variable=MetricProducts.wip.name,
                 key=product,
                 value=(self.env.now, wip),
             )
             # Log resource queue
             if self.log_queues:
                 current_log = self.logs.get_log(
-                    MetricResources.QUEUE.value, first_resource
+                    MetricResources.queue.name, first_resource
                 )
                 if len(current_log) == 0:
                     queue_qnt = sum(
@@ -220,7 +220,7 @@ class FactorySimulation(ABC):
                     queue_qnt += productionOrder.quantity
                 # log
                 self.logs.log(
-                    variable=MetricResources.QUEUE.value,
+                    variable=MetricResources.queue.name,
                     key=first_resource,
                     value=(self.env.now, queue_qnt),
                 )
@@ -263,7 +263,7 @@ class FactorySimulation(ABC):
         # Log breakdown
         if self.warmup_finished:
             self.logs.log(
-                variable=MetricResources.BREAKDOWN.value,
+                variable=MetricResources.breakdown.name,
                 key=resource,
                 value=(breakdown_start, round(breakdown_end - breakdown_start, 6)),
             )
@@ -298,21 +298,21 @@ class FactorySimulation(ABC):
                 if self.warmup_finished:
                     # Log flow time
                     self.logs.log(
-                        variable=MetricProducts.FLOW_TIME.value,
+                        variable=MetricProducts.flowTime.name,
                         key=product,
                         value=(self.env.now, self.env.now - productionOrder.released),
                     )
                     # Log Wip
                     wip = self.stores.wip[product].level
                     self.logs.log(
-                        variable=MetricProducts.WIP.value,
+                        variable=MetricProducts.wip.name,
                         key=product,
                         value=(self.env.now, wip),
                     )
                     # Log FG
                     fg_level = self.stores.finished_goods[product].level
                     self.logs.log(
-                        variable=MetricProducts.FINISHED_GOODS.value,
+                        variable=MetricProducts.finishedGoods.name,
                         key=product,
                         value=(self.env.now, fg_level),
                     )
@@ -331,7 +331,7 @@ class FactorySimulation(ABC):
                 # Log queues
                 if self.warmup_finished and self.log_queues:
                     current_queue = self.logs.get_log(
-                        MetricResources.QUEUE.value, next_resource
+                        MetricResources.queue.name, next_resource
                     )
                     if len(current_queue) == 0:
                         queue_qnt = sum(
@@ -345,7 +345,7 @@ class FactorySimulation(ABC):
                         queue_qnt += productionOrder.quantity
                     # Log queue
                     self.logs.log(
-                        variable=MetricResources.QUEUE.value,
+                        variable=MetricResources.queue.name,
                         key=next_resource,
                         value=(self.env.now, queue_qnt),
                     )
@@ -374,7 +374,7 @@ class FactorySimulation(ABC):
             self._custom_order_out_resource_input(productionOrder, resource)
 
             if self.warmup_finished and self.log_queues:
-                current_queue = self.logs.get_log(MetricResources.QUEUE.value, resource)
+                current_queue = self.logs.get_log(MetricResources.queue.name, resource)
                 if len(current_queue) == 0:
                     queue_qnt = sum(
                         [x.quantity for x in self.stores.resource_input[resource].items]
@@ -384,7 +384,7 @@ class FactorySimulation(ABC):
                     queue_qnt += productionOrder.quantity
                 # Log queue
                 self.logs.log(
-                    variable=MetricResources.QUEUE.value,
+                    variable=MetricResources.queue.name,
                     key=resource,
                     value=(self.env.now, queue_qnt),
                 )
@@ -407,7 +407,7 @@ class FactorySimulation(ABC):
                 setup_time = self.rnd_process.random_number(setup_dist, setup_params)
                 if self.warmup_finished:
                     self.logs.log(
-                        variable=MetricResources.SETUP.value,
+                        variable=MetricResources.setup.name,
                         key=resource,
                         value=(self.env.now, setup_time),
                     )
@@ -454,7 +454,7 @@ class FactorySimulation(ABC):
 
                 if self.warmup_finished:
                     self.logs.log(
-                        variable=MetricResources.UTILIZATION.value,
+                        variable=MetricResources.utilization.name,
                         key=resource,
                         value=(self.env.now, utilization),
                     )
@@ -494,7 +494,7 @@ class FactorySimulation(ABC):
         if self.warmup_finished:
             fg_level = self.stores.finished_goods[product].level
             self.logs.log(
-                variable=MetricProducts.FINISHED_GOODS.value,
+                variable=MetricProducts.finishedGoods.name,
                 key=product,
                 value=(self.env.now, fg_level),
             )
@@ -519,7 +519,7 @@ class FactorySimulation(ABC):
         if self.warmup_finished:
             fg_level = self.stores.finished_goods[product].level
             self.logs.log(
-                variable=MetricProducts.FINISHED_GOODS.value,
+                variable=MetricProducts.finishedGoods.name,
                 key=product,
                 value=(self.env.now, fg_level),
             )
@@ -552,7 +552,7 @@ class FactorySimulation(ABC):
             if self.warmup_finished:
                 fg_level = self.stores.finished_goods[product].level
                 self.logs.log(
-                    variable=MetricProducts.FINISHED_GOODS.value,
+                    variable=MetricProducts.finishedGoods.name,
                     key=product,
                     value=(self.env.now, fg_level),
                 )
@@ -574,33 +574,33 @@ class FactorySimulation(ABC):
         # Lost Sales
         if not delivered:
             self.logs.log(
-                variable=MetricProducts.LOST_SALES.value,
+                variable=MetricProducts.lostSales.name,
                 key=product,
                 value=(self.env.now, quantity),
             )
         # Delivered ontime
         elif delivered <= duedate:
             self.logs.log(
-                variable=MetricProducts.DELIVERED_ONTIME.value,
+                variable=MetricProducts.deliveredOntime.name,
                 key=product,
                 value=(self.env.now, quantity),
             )
             earliness = demand_order.duedate - self.env.now
             self.logs.log(
-                variable=MetricProducts.EARLINESS.value,
+                variable=MetricProducts.earliness.name,
                 key=product,
                 value=(self.env.now, earliness),
             )
         # Delivered late
         elif delivered > duedate:
             self.logs.log(
-                variable=MetricProducts.DELIVERED_LATE.value,
+                variable=MetricProducts.deliveredLate.name,
                 key=product,
                 value=(self.env.now, quantity),
             )
             tardiness = self.env.now - demand_order.duedate
             self.logs.log(
-                variable=MetricProducts.TARDINESS.value,
+                variable=MetricProducts.tardiness.name,
                 key=product,
                 value=(self.env.now, tardiness),
             )
@@ -610,7 +610,7 @@ class FactorySimulation(ABC):
         product = demand_order.product
         lead_time = self.env.now - demand_order.arived
         self.logs.log(
-            variable=MetricProducts.LEAD_TIME.value,
+            variable=MetricProducts.leadTime.name,
             key=product,
             value=(self.env.now, lead_time),
         )
@@ -687,18 +687,18 @@ class FactorySimulation(ABC):
     def products_metrics(self, saved_logs=False) -> pd.DataFrame:
         df_list = []
         sum_metrics = [
-            MetricProducts.DELIVERED_ONTIME.value,
-            MetricProducts.DELIVERED_LATE.value,
-            MetricProducts.LOST_SALES.value,
+            MetricProducts.deliveredOntime.name,
+            MetricProducts.deliveredLate.name,
+            MetricProducts.lostSales.name,
         ]
 
         for metric in MetricProducts:
 
             metric_df = self.logs.get_variable_logs(
-                variable=metric.value, saved_logs=saved_logs
+                variable=metric.name, saved_logs=saved_logs
             )
 
-            if metric.value in sum_metrics:
+            if metric.name in sum_metrics:
                 metric_df = metric_df.pivot_table(
                     values="value", index="key", columns="variable", aggfunc="sum"
                 )
@@ -714,10 +714,10 @@ class FactorySimulation(ABC):
         df_list = []
         for metric in MetricResources:
             metric_df = self.logs.get_variable_logs(
-                variable=metric.value, saved_logs=saved_logs
+                variable=metric.name, saved_logs=saved_logs
             )
 
-            if metric.value == "utilization":
+            if metric.name == "utilization":
                 metric_df = metric_df.pivot_table(
                     values="value", index="key", columns="variable", aggfunc="sum"
                 )

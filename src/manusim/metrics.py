@@ -1,39 +1,69 @@
 from abc import ABC
+from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
+from typing import Literal
 
 import numpy as np
 import pandas as pd
+import yaml
+from omegaconf import DictConfig
 from scipy import stats
 
 
-class MetricProducts(str, Enum):
-    DELIVERED_ONTIME = "DeliveredOntime"
-    DELIVERED_LATE: str = "DeliveredLate"
-    LOST_SALES: str = "LostSales"
-    FLOW_TIME: str = "FlowTime"
-    LEAD_TIME: str = "LeadTime"
-    TARDINESS: str = "Tardiness"
-    EARLINESS: str = "Earliness"
-    WIP: str = "WIP"
-    FINISHED_GOODS: str = "FinishedGoods"
-    RELEASED: str = "Released"
+class AggMethod:
+    sum: str = "sum"
+    mean: str = "mean"
+    count: str = "count"
+    last: str = "last"
 
 
-class MetricResources(str, Enum):
-    UTILIZATION: str = "Utilization"
-    BREAKDOWN: str = "Breakdown"
-    SETUP: str = "Setup"
-    QUEUE: str = "Queue"
+@dataclass
+class MetricParams:
+    agg: str
+    timebase: bool
 
 
+class MetricProducts(Enum):
+    deliveredOntime = MetricParams(AggMethod.sum, False)
+    deliveredLate = MetricParams(AggMethod.sum, False)
+    lostSales = MetricParams(AggMethod.sum, False)
+    flowTime = MetricParams(AggMethod.mean, False)
+    leadTime = MetricParams(AggMethod.mean, False)
+    tardiness = MetricParams(AggMethod.mean, False)
+    earliness = MetricParams(AggMethod.mean, False)
+    wip = MetricParams(AggMethod.mean, False)
+    finishedGoods = MetricParams(AggMethod.mean, False)
+    released = MetricParams(AggMethod.mean, False)
+
+
+class MetricResources(Enum):
+    utilization = MetricParams(AggMethod.sum, True)
+    breakdown = MetricParams(AggMethod.sum, True)
+    setup = MetricParams(AggMethod.sum, True)
+    queue = MetricParams(AggMethod.mean, False)
+
+
+@dataclass
 class ExperimentMetrics:
-    def __init__(self, experiment_folder: Path, custom_metrics: list = None):
+    def __init__(
+        self, experiment_folder: Path, config: DictConfig = None, custom_metrics: list = None
+    ):
         self.experiment_folder = experiment_folder
         if not isinstance(self.experiment_folder, Path):
             self.experiment_folder = Path(self.experiment_folder).resolve()
         self.custom_metrics = custom_metrics
         self.logs = pd.DataFrame()
+        
+        self.params = {}
+        if config:
+            self.params = config
+        else:
+            self.read_params()
+
+    def read_params(self) -> None:
+        params_path = self.experiment_folder / ".hydra" / "config.yaml"
+        self.params = yaml.safe_load(params_path.read_text())
 
     def read_logs(self) -> None:
 
@@ -59,18 +89,52 @@ class ExperimentMetrics:
         else:
             return pd.DataFrame()
 
-    def calculate_means(self) -> pd.DataFrame:
+    def calculate_runs_stats(self, custom_metrics: Enum = None) -> pd.DataFrame:
 
-        self.means = (
-            self.logs.drop(["time", "run"], axis=1)
-            .groupby(["variable", "key", "experiment"])
-            .mean()
-            .reset_index()
-        )
+        df_list = []
+        for metric in MetricProducts:
+            df_list.append(self._calculate_metric(metric))
 
-        return self.means
+        for metric in MetricResources:
+            df_list.append(self._calculate_metric(metric))
 
-    def calculate_stats(
+        if custom_metrics:
+            for metric in custom_metrics:
+                df_list.append(self._calculate_metric(metric))
+
+        self.runs_metrics = pd.concat(df_list, ignore_index=True)
+
+        return self.runs_metrics
+
+    def _calculate_metric(self, metric: Enum) -> pd.DataFrame:
+
+        group_keys = ["experiment", "variable", "key", "run"]
+        df_metric = self.logs.loc[self.logs["variable"] == metric.name]
+
+        if df_metric.empty:
+            return pd.DataFrame()
+
+        if metric.value.agg == AggMethod.mean:
+            df_metric = (
+                df_metric.drop("time", axis=1).groupby(group_keys).mean().reset_index()
+            )
+        elif metric.value.agg == AggMethod.sum:
+            df_metric = (
+                df_metric.drop("time", axis=1).groupby(group_keys).sum().reset_index()
+            )
+        elif metric.value.agg == AggMethod.count:
+            df_metric = (
+                df_metric.drop("time", axis=1).groupby(group_keys).count().reset_index()
+            )
+
+        if metric.value.timebase:
+            run_until = self.params["simulation"]["run_until"]
+            warmup = self.params["simulation"]["warmup"]
+            df_metric["value"] = df_metric["value"] / (run_until - warmup)
+
+        return df_metric
+
+    def calculate_experiment_stats(
         self,
         confidence: float = 0.95,
         precision: float = 0.05,
@@ -82,14 +146,15 @@ class ExperimentMetrics:
         if variables:
             metric_list = variables
         else:
-            metric_list = self.logs["variable"].unique()
+            metric_list = self.runs_metrics["variable"].unique()
+            print(metric_list)
 
         for metric in metric_list:
-            metric_df = self.logs.loc[self.logs["variable"] == metric]
-
+            metric_df = self.runs_metrics.loc[self.runs_metrics["variable"] == metric]
+            print(metric_df)
             if aggregate_variables:
                 metric_df = (
-                    metric_df.drop(["time", "key"], axis=1)
+                    metric_df.drop("key", axis=1)
                     .groupby(["experiment", "variable", "run"])
                     .mean()
                     .reset_index()
@@ -107,7 +172,6 @@ class ExperimentMetrics:
                 for key in metric_df["key"].unique():
                     key_df = (
                         metric_df.loc[metric_df["key"] == key]
-                        .drop("time", axis=1)
                         .groupby(["experiment", "variable", "run", "key"])
                         .mean()
                         .reset_index()
@@ -140,7 +204,10 @@ class ExperimentMetrics:
         ci_low = mean - error
         ci_high = mean + error
 
-        n_size = np.square(t_crit * std / precision)
+        if mean != 0:
+            n_size = np.square(t_crit * std / (precision * mean))
+        else:
+            n_size = 0
 
         return {
             "size": [size],
@@ -160,7 +227,8 @@ class ExperimentMetrics:
 
     def save_stats(self, confidence, precision):
 
-        stats_df = self.calculate_stats(confidence, precision)
+        self.runs_metrics = self.calculate_runs_stats()
+        stats_df = self.calculate_experiment_stats(confidence, precision)
         save_path = self.experiment_folder / "experiment_stats.csv"
         stats_df.to_csv(save_path, index=False)
 
