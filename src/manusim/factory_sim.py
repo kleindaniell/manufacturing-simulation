@@ -10,7 +10,7 @@ from manusim.engine.logs import Logger
 from manusim.engine.orders import DemandOrder, ProductionOrder
 from manusim.engine.stores import SimulationStores
 from manusim.engine.utils import DistributionGenerator
-from manusim.metrics import MetricProducts, MetricResources
+from manusim.metrics import MetricGeneral, MetricProducts, MetricResources
 
 
 class FactorySimulation(ABC):
@@ -95,12 +95,14 @@ class FactorySimulation(ABC):
         """Initialize logging components"""
 
         self.logs = Logger(logs_save_path=self.log_save_path, mem_size=self.memory_size)
-
         for product_metric in MetricProducts:
             self.logs.create_log(product_metric.name, self.products_config.keys())
 
         for resource_metric in MetricResources:
             self.logs.create_log(resource_metric.name, self.resources_config.keys())
+
+        for general_metric in MetricGeneral:
+            self.logs.create_log(general_metric.name, ["general"])
 
         self._create_custom_logs()
 
@@ -203,6 +205,12 @@ class FactorySimulation(ABC):
                 key=product,
                 value=(self.env.now, wip),
             )
+            total_wip = sum(store.level for store in self.stores.wip.values())
+            self.logs.log(
+                variable=MetricGeneral.wip_general.name,
+                key="general",
+                value=(self.env.now, total_wip),
+            )
             # Log resource queue
             if self.log_queues:
                 current_log = self.logs.get_log(
@@ -302,6 +310,7 @@ class FactorySimulation(ABC):
                         key=product,
                         value=(self.env.now, self.env.now - productionOrder.released),
                     )
+                    
                     # Log Wip
                     wip = self.stores.wip[product].level
                     self.logs.log(
@@ -309,12 +318,27 @@ class FactorySimulation(ABC):
                         key=product,
                         value=(self.env.now, wip),
                     )
+                    total_wip = sum(store.level for store in self.stores.wip.values())
+                    self.logs.log(
+                        variable=MetricGeneral.wip_general.name,
+                        key="general",
+                        value=(self.env.now, total_wip),
+                    )
+
                     # Log FG
                     fg_level = self.stores.finished_goods[product].level
                     self.logs.log(
                         variable=MetricProducts.finishedGoods.name,
                         key=product,
                         value=(self.env.now, fg_level),
+                    )
+                    total_fg = sum(
+                        store.level for store in self.stores.finished_goods.values()
+                    )
+                    self.logs.log(
+                        variable=MetricGeneral.finishedGoods_general.name,
+                        key="general",
+                        value=(self.env.now, total_fg),
                     )
 
             # Order to next resource
@@ -498,6 +522,14 @@ class FactorySimulation(ABC):
                 key=product,
                 value=(self.env.now, fg_level),
             )
+            total_fg = sum(
+                store.level for store in self.stores.finished_goods.values()
+            )
+            self.logs.log(
+                variable=MetricGeneral.finishedGoods_general.name,
+                key="general",
+                value=(self.env.now, total_fg),
+            )
 
             self._log_delivery_performance(demand_order)
             self._log_lead_time(demand_order)
@@ -522,6 +554,14 @@ class FactorySimulation(ABC):
                 variable=MetricProducts.finishedGoods.name,
                 key=product,
                 value=(self.env.now, fg_level),
+            )
+            total_fg = sum(
+                store.level for store in self.stores.finished_goods.values()
+            )
+            self.logs.log(
+                variable=MetricGeneral.finishedGoods_general.name,
+                key="general",
+                value=(self.env.now, total_fg),
             )
 
             self._log_delivery_performance(demand_order)
@@ -555,6 +595,14 @@ class FactorySimulation(ABC):
                     variable=MetricProducts.finishedGoods.name,
                     key=product,
                     value=(self.env.now, fg_level),
+                )
+                total_fg = sum(
+                    store.level for store in self.stores.finished_goods.values()
+                )
+                self.logs.log(
+                    variable=MetricGeneral.finishedGoods_general.name,
+                    key="general",
+                    value=(self.env.now, total_fg),
                 )
 
                 self._log_delivery_performance(demand_order)
@@ -681,6 +729,15 @@ class FactorySimulation(ABC):
             print("Empty resource metrics")
         print("-" * 50)
 
+        print("GENERAL METRICS:")
+        general = self.general_metrics()
+        if not general.empty:
+
+            print(general)
+        else:
+            print("Empty general metrics")
+        print("-" * 50)
+
     def print_custom_metrics(self):
         pass
 
@@ -731,13 +788,29 @@ class FactorySimulation(ABC):
             df_list.append(metric_df)
         return pd.concat(df_list, axis=1)
 
+    def general_metrics(self, saved_logs=False) -> pd.DataFrame:
+        df_list = []
+        for metric in MetricGeneral:
+            metric_df = self.logs.get_variable_logs(
+                variable=metric.name, saved_logs=saved_logs
+            )
+
+            metric_df = metric_df.pivot_table(
+                values="value", index="key", columns="variable", aggfunc="mean"
+            )
+
+            df_list.append(metric_df)
+        return pd.concat(df_list, axis=1)
+
     def save_metrics(self, save_path: Path, saved_logs=False) -> None:
         products_df = self.products_metrics(saved_logs=saved_logs)
         resources_df = self.resources_metrics(saved_logs=saved_logs)
+        general_df = self.general_metrics(saved_logs=saved_logs)
 
         save_path.mkdir(exist_ok=True, parents=True)
         products_df.to_csv(save_path / "metrics_products.csv")
         resources_df.to_csv(save_path / "metrics_resources.csv")
+        general_df.to_csv(save_path / "metrics_general.csv")
 
     def save_custom_metrics(self, save_path: Path, saved_logs=False) -> None:
         pass

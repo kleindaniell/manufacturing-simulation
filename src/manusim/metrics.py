@@ -18,7 +18,7 @@ class AggMethod:
     last: str = "last"
 
 
-@dataclass
+@dataclass(eq=False)
 class MetricParams:
     agg: str
     timebase: bool
@@ -42,6 +42,11 @@ class MetricResources(Enum):
     breakdown = MetricParams(AggMethod.sum, True)
     setup = MetricParams(AggMethod.sum, True)
     queue = MetricParams(AggMethod.mean, False)
+
+
+class MetricGeneral(Enum):
+    wip_general = MetricParams(AggMethod.mean, False)
+    finishedGoods_general = MetricParams(AggMethod.mean, False)
 
 
 @dataclass
@@ -97,6 +102,9 @@ class ExperimentMetrics:
 
         for metric in MetricResources:
             df_list.append(self._calculate_metric(metric))
+        
+        for metric in MetricGeneral:
+            df_list.append(self._calculate_metric(metric))
 
         if custom_metrics:
             for metric in custom_metrics:
@@ -147,11 +155,10 @@ class ExperimentMetrics:
             metric_list = variables
         else:
             metric_list = self.runs_metrics["variable"].unique()
-            print(metric_list)
 
         for metric in metric_list:
             metric_df = self.runs_metrics.loc[self.runs_metrics["variable"] == metric]
-            print(metric_df)
+
             if aggregate_variables:
                 metric_df = (
                     metric_df.drop("key", axis=1)
