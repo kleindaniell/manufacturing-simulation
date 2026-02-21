@@ -56,6 +56,11 @@ class FactorySimulation(ABC):
         self.stores = SimulationStores(
             self.env, self.products_config, self.resources_config
         )
+        
+        # Cache performance 
+        self._cached_total_wip = 0
+        self._cached_total_fg = {product: 0 for product in self.products_config.keys()}
+        self._queue_quantities = {product: 0 for product in self.resources_config.keys()}
 
         # Init logging components
         self._init_loggint()
@@ -191,6 +196,10 @@ class FactorySimulation(ABC):
         yield self.stores.resource_input[first_resource].put(productionOrder)
         yield self.stores.wip[product].put(productionOrder.quantity)
 
+        # update performance caches
+        self._cached_total_wip += productionOrder.quantity
+        self._queue_quantities[first_resource] +=productionOrder.quantity
+
         # Log release products
         if self.warmup_finished:
             self.logs.log(
@@ -205,27 +214,23 @@ class FactorySimulation(ABC):
                 key=product,
                 value=(self.env.now, wip),
             )
-            total_wip = sum(store.level for store in self.stores.wip.values())
+            
             self.logs.log(
                 variable=MetricGeneral.wip_general.name,
                 key="general",
-                value=(self.env.now, total_wip),
+                value=(self.env.now, self._cached_total_wip),
             )
             # Log resource queue
             if self.log_queues:
-                current_log = self.logs.get_log(
+                last_queue = self.logs.get_last_log_value(
                     MetricResources.queue.name, first_resource
                 )
-                if len(current_log) == 0:
-                    queue_qnt = sum(
-                        [
-                            x.quantity
-                            for x in self.stores.resource_input[first_resource].items
-                        ]
-                    )
+                
+                if last_queue is None:
+                    queue_qnt = self._queue_quantities[first_resource]
                 else:
-                    queue_qnt = current_log[-1][1]
-                    queue_qnt += productionOrder.quantity
+                    queue_qnt = last_queue[1] + productionOrder.quantity
+                    self._queue_quantities[first_resource] = queue_qnt
                 # log
                 self.logs.log(
                     variable=MetricResources.queue.name,
@@ -303,6 +308,11 @@ class FactorySimulation(ABC):
                 yield self.stores.finished_goods[product].put(productionOrder.quantity)
                 yield self.stores.wip[product].get(productionOrder.quantity)
 
+                # Update performance caches
+                self._cached_total_wip -= productionOrder.quantity
+                fg_level = self.stores.finished_goods[product].level
+                self._cached_total_fg[product] = fg_level
+
                 if self.warmup_finished:
                     # Log flow time
                     self.logs.log(
@@ -318,23 +328,21 @@ class FactorySimulation(ABC):
                         key=product,
                         value=(self.env.now, wip),
                     )
-                    total_wip = sum(store.level for store in self.stores.wip.values())
+
                     self.logs.log(
                         variable=MetricGeneral.wip_general.name,
                         key="general",
-                        value=(self.env.now, total_wip),
+                        value=(self.env.now, self._cached_total_wip),
                     )
 
                     # Log FG
-                    fg_level = self.stores.finished_goods[product].level
                     self.logs.log(
                         variable=MetricProducts.finishedGoods.name,
                         key=product,
                         value=(self.env.now, fg_level),
                     )
-                    total_fg = sum(
-                        store.level for store in self.stores.finished_goods.values()
-                    )
+                    
+                    total_fg = sum(self._cached_total_fg.values())
                     self.logs.log(
                         variable=MetricGeneral.finishedGoods_general.name,
                         key="general",
@@ -352,21 +360,20 @@ class FactorySimulation(ABC):
                 yield self.stores.resource_input[next_resource].put(productionOrder)
                 self._custom_order_in_resource_input(productionOrder, next_resource)
 
+                # Update queue cached
+                self._queue_quantities[next_resource] += productionOrder.quantity
+
                 # Log queues
                 if self.warmup_finished and self.log_queues:
-                    current_queue = self.logs.get_log(
+                    last_queue = self.logs.get_last_log_value(
                         MetricResources.queue.name, next_resource
                     )
-                    if len(current_queue) == 0:
-                        queue_qnt = sum(
-                            [
-                                x.quantity
-                                for x in self.stores.resource_input[next_resource].items
-                            ]
-                        )
+                    if last_queue is None:
+                        queue_qnt = self._queue_quantities[next_resource]
                     else:
-                        queue_qnt = current_queue[-1][1]
-                        queue_qnt += productionOrder.quantity
+                        queue_qnt = last_queue[1] + productionOrder.quantity
+                        self._queue_quantities[next_resource] = queue_qnt
+
                     # Log queue
                     self.logs.log(
                         variable=MetricResources.queue.name,
@@ -397,15 +404,11 @@ class FactorySimulation(ABC):
             productionOrder: ProductionOrder = yield from self.order_selection(resource)
             self._custom_order_out_resource_input(productionOrder, resource)
 
+            # Update cached queue
+            self._queue_quantities[resource] -= productionOrder.quantity
+
             if self.warmup_finished and self.log_queues:
-                current_queue = self.logs.get_log(MetricResources.queue.name, resource)
-                if len(current_queue) == 0:
-                    queue_qnt = sum(
-                        [x.quantity for x in self.stores.resource_input[resource].items]
-                    )
-                else:
-                    queue_qnt = current_queue[-1][1]
-                    queue_qnt += productionOrder.quantity
+                queue_qnt = self._queue_quantities[resource]
                 # Log queue
                 self.logs.log(
                     variable=MetricResources.queue.name,
@@ -517,14 +520,14 @@ class FactorySimulation(ABC):
         # Log orders
         if self.warmup_finished:
             fg_level = self.stores.finished_goods[product].level
+            self._cached_total_fg[product] = fg_level
             self.logs.log(
                 variable=MetricProducts.finishedGoods.name,
                 key=product,
                 value=(self.env.now, fg_level),
             )
-            total_fg = sum(
-                store.level for store in self.stores.finished_goods.values()
-            )
+            total_fg = sum(self._cached_total_fg.values())
+
             self.logs.log(
                 variable=MetricGeneral.finishedGoods_general.name,
                 key="general",
@@ -550,14 +553,13 @@ class FactorySimulation(ABC):
 
         if self.warmup_finished:
             fg_level = self.stores.finished_goods[product].level
+            self._cached_total_fg[product] = fg_level
             self.logs.log(
                 variable=MetricProducts.finishedGoods.name,
                 key=product,
                 value=(self.env.now, fg_level),
             )
-            total_fg = sum(
-                store.level for store in self.stores.finished_goods.values()
-            )
+            total_fg = sum(self._cached_total_fg.values())
             self.logs.log(
                 variable=MetricGeneral.finishedGoods_general.name,
                 key="general",
@@ -591,14 +593,13 @@ class FactorySimulation(ABC):
 
             if self.warmup_finished:
                 fg_level = self.stores.finished_goods[product].level
+                self._cached_total_fg[product] = fg_level
                 self.logs.log(
                     variable=MetricProducts.finishedGoods.name,
                     key=product,
                     value=(self.env.now, fg_level),
                 )
-                total_fg = sum(
-                    store.level for store in self.stores.finished_goods.values()
-                )
+                total_fg = sum(self._cached_total_fg.values())
                 self.logs.log(
                     variable=MetricGeneral.finishedGoods_general.name,
                     key="general",

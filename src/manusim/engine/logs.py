@@ -38,17 +38,31 @@ class Logger:
             key (str): The key for the log entry (e.g., product name).
             value (Tuple[float, float]): The value to log (time, value).
         """
+        var_dict = getattr(self, variable)
+        
         index = self.log_index[variable][key] % self.mem_size
 
         if self.log_index[variable][key] >= self.mem_size and self.logs_save_path:
             self.save_logs_to_file(variable, key)
 
-        getattr(self, variable)[key][index] = value
+        var_dict[key][index] = value
 
         self.log_index[variable][key] = index + 1
 
     def get_log(self, variable: str, key: str) -> np.ndarray:
         return getattr(self, variable)[key]
+
+    def get_last_log_value(self, variable: str, key: str):
+
+        index=self.log_index.get(variable, {}).get(key, 0)
+        if index ==0:
+            return None
+
+        var_dict = getattr(self, variable)
+        last_idx = (index -1) % self.mem_size
+        last_value = var_dict[key][last_idx]
+        return tuple(last_value)
+
 
     def get_variable_logs(self, variable: str, saved_logs=False) -> pd.DataFrame:
 
