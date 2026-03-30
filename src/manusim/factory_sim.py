@@ -457,13 +457,13 @@ class FactorySimulation(ABC):
 
                 start_time = self.env.now
 
-                for _ in range(int(order_quantity)):
-                    processing_time = self.rnd_process.random_number(
+                total_processing_time = sum(
+                    self.rnd_process.random_number(
                         process_time_dist, process_time_params
-                    )
-
-                    yield self.env.timeout(processing_time)
-                    self._custom_part_processed(product, resource, process)
+                    ) for _ in range(int(order_quantity))
+                )
+                
+                yield self.env.timeout(total_processing_time)
 
                 end_time = self.env.now
                 utilization = round(end_time - start_time, 6)
