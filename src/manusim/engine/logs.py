@@ -8,8 +8,16 @@ from pathlib import Path
 class Logger:
     """Base class for event logging"""
 
-    def __init__(self, logs_save_path: str = None, mem_size: int = 10000):
+    def __init__(
+        self,
+        logs_save_path: str = None,
+        mem_size: int = 10000,
+        enabled: bool = True,
+        allocate_storage: bool = True,
+    ):
         self.mem_size = mem_size
+        self.enabled = enabled
+        self.allocate_storage = allocate_storage
         self.log_index = {}
         self.logs_save_path = logs_save_path
         if logs_save_path:
@@ -25,7 +33,10 @@ class Logger:
             self.log_index[variable] = {}
 
             for key in keys:
-                var_dict[key] = np.zeros((self.mem_size, 2), dtype=np.float32)
+                if self.allocate_storage:
+                    var_dict[key] = np.zeros((self.mem_size, 2), dtype=np.float32)
+                else:
+                    var_dict[key] = np.empty((0, 2), dtype=np.float32)
                 self.log_index[variable][key] = 0
 
         setattr(self, variable, var_dict)
@@ -38,7 +49,12 @@ class Logger:
             key (str): The key for the log entry (e.g., product name).
             value (Tuple[float, float]): The value to log (time, value).
         """
-        var_dict = getattr(self, variable)
+        if not self.enabled:
+            return
+
+        var_dict = getattr(self, variable, None)
+        if var_dict is None or variable not in self.log_index or key not in var_dict:
+            return
         
         index = self.log_index[variable][key] % self.mem_size
 
@@ -50,7 +66,10 @@ class Logger:
         self.log_index[variable][key] = index + 1
 
     def get_log(self, variable: str, key: str) -> np.ndarray:
-        return getattr(self, variable)[key]
+        var_dict = getattr(self, variable, None)
+        if var_dict is None:
+            return np.empty((0, 2), dtype=np.float32)
+        return var_dict.get(key, np.empty((0, 2), dtype=np.float32))
 
     def get_last_log_value(self, variable: str, key: str):
 
@@ -58,7 +77,9 @@ class Logger:
         if index ==0:
             return None
 
-        var_dict = getattr(self, variable)
+        var_dict = getattr(self, variable, None)
+        if var_dict is None or key not in var_dict:
+            return None
         last_idx = (index -1) % self.mem_size
         last_value = var_dict[key][last_idx]
         return tuple(last_value)
@@ -74,18 +95,23 @@ class Logger:
                 df_list.append(df_saved)
 
         # Get memory logs
-        variable_logs = getattr(self, variable)
+        variable_logs = getattr(self, variable, {})
         for key in variable_logs.keys():
             df_temp = self.get_logs(variable, key)
             df_list.append(df_temp)
 
-        return pd.concat(df_list, ignore_index=True)
+        if df_list:
+            return pd.concat(df_list, ignore_index=True)
+        return pd.DataFrame(columns=["time", "value", "variable", "key"])
 
     def get_logs(self, variable: str, key: str) -> pd.DataFrame:
 
         # Read memory logs
+        var_dict = getattr(self, variable, None)
+        if var_dict is None or key not in var_dict:
+            return pd.DataFrame(columns=["time", "value", "variable", "key"])
         df = pd.DataFrame(
-            getattr(self, variable)[key][: self.log_index[variable][key]],
+            var_dict[key][: self.log_index[variable][key]],
             columns=["time", "value"],
         )
         df["variable"] = variable
@@ -97,6 +123,11 @@ class Logger:
         """
         Saves the logs for a given variable and key to a file.
         """
+        if not self.logs_save_path:
+            return
+        if variable not in self.log_index or key not in self.log_index[variable]:
+            return
+
         self.logs_save_path.mkdir(exist_ok=True, parents=True)
 
         file_save_path = Path(f"{self.logs_save_path}/log_{variable}_{key}.csv")
@@ -109,8 +140,13 @@ class Logger:
         self.restart_log(variable, key)
 
     def restart_log(self, variable: str, key: str):
+        if variable not in self.log_index or key not in self.log_index[variable]:
+            return
         self.log_index[variable][key] = 0
-        getattr(self, variable)[key] = np.zeros((self.mem_size, 2), dtype=np.float32)
+        if self.allocate_storage:
+            getattr(self, variable)[key] = np.zeros((self.mem_size, 2), dtype=np.float32)
+        else:
+            getattr(self, variable)[key] = np.empty((0, 2), dtype=np.float32)
 
     def _log_dict_to_df(self, field_name: str = None) -> pd.DataFrame:
         df_list = []
@@ -139,6 +175,8 @@ class Logger:
                 self.save_logs_to_file(variable=variable, key=key)
 
     def read_saved_logs(self, variable: str) -> pd.DataFrame:
+        if not self.logs_save_path:
+            return pd.DataFrame()
 
         file_list = list(self.logs_save_path.rglob(f"**/*log_{variable}*.csv"))
         df_list = []

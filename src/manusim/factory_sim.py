@@ -45,6 +45,10 @@ class FactorySimulation(ABC):
         self.delivery_mode = self.config.get("delivery_mode", "asReady")
 
         self.log_queues = self.config.get("log_queues", False)
+        self.enable_event_logging = self.config.get("enable_event_logging", True)
+        self.allocate_log_storage = self.config.get(
+            "allocate_log_storage", self.enable_event_logging
+        )
 
         self._initiate_environment()
 
@@ -99,7 +103,12 @@ class FactorySimulation(ABC):
     def _init_loggint(self) -> None:
         """Initialize logging components"""
 
-        self.logs = Logger(logs_save_path=self.log_save_path, mem_size=self.memory_size)
+        self.logs = Logger(
+            logs_save_path=self.log_save_path,
+            mem_size=self.memory_size,
+            enabled=self.enable_event_logging,
+            allocate_storage=self.allocate_log_storage,
+        )
         for product_metric in MetricProducts:
             self.logs.create_log(product_metric.name, self.products_config.keys())
 
@@ -457,10 +466,8 @@ class FactorySimulation(ABC):
 
                 start_time = self.env.now
 
-                total_processing_time = sum(
-                    self.rnd_process.random_number(
-                        process_time_dist, process_time_params
-                    ) for _ in range(int(order_quantity))
+                total_processing_time = self.rnd_process.sum_random_numbers_batch(
+                    process_time_dist, process_time_params, int(order_quantity)
                 )
                 
                 yield self.env.timeout(total_processing_time)
