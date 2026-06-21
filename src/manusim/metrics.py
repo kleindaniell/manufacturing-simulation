@@ -9,6 +9,15 @@ import yaml
 from omegaconf import DictConfig
 from scipy import stats
 
+_LOG_READ_COLS = ["time", "value", "variable", "key"]
+_LOG_READ_DTYPES = {
+    "time": "float32",
+    "value": "float32",
+    "variable": "string",
+    "key": "string",
+}
+_METRICS_NOT_PASSED = object()
+
 
 class AggMethod:
     sum: str = "sum"
@@ -64,9 +73,10 @@ class ExperimentMetrics:
         self.experiment_folder = experiment_folder
         if not isinstance(self.experiment_folder, Path):
             self.experiment_folder = Path(self.experiment_folder).resolve()
-        self.custom_metrics = custom_metrics
+        self.custom_metrics = custom_metrics or []
         self.logs = pd.DataFrame()
-        
+        self._metrics: list[str] | None = None
+
         self.params = {}
         if config:
             self.params = config
@@ -77,26 +87,94 @@ class ExperimentMetrics:
         params_path = self.experiment_folder / ".hydra" / "config.yaml"
         self.params = yaml.safe_load(params_path.read_text())
 
-    def read_logs(self) -> None:
+    def read_logs(
+        self, metrics: list[str | Enum] | None = _METRICS_NOT_PASSED
+    ) -> None:
+        if metrics is _METRICS_NOT_PASSED:
+            pass
+        elif metrics is None:
+            self._metrics = None
+        else:
+            self._metrics = self._normalize_metric_names(metrics)
 
-        glob_pattern = f"**/*log_*.csv"
-        self.logs = self._read_log_files(glob_pattern)
-        self.logs["experiment"] = self.experiment_folder.name
+        variables = set(self._metrics) if self._metrics is not None else None
+        self.logs = self._read_log_files(variables)
+        if not self.logs.empty:
+            self.logs["experiment"] = self.experiment_folder.name
 
-    def _read_log_files(self, glob_pattern) -> pd.DataFrame:
-        file_list = list(self.experiment_folder.rglob(glob_pattern))
+    def _normalize_metric_names(self, metrics: list[str | Enum]) -> list[str]:
+        names: list[str] = []
+        seen: set[str] = set()
+        for metric in metrics:
+            name = metric.name if isinstance(metric, Enum) else metric
+            if name not in seen:
+                seen.add(name)
+                names.append(name)
+        return names
+
+    def _metric_names(self) -> list[str]:
+        if self._metrics is not None:
+            return self._metrics
+        names = [m.name for m in STANDARD_METRICS]
+        for metric in self.custom_metrics:
+            if metric.name not in names:
+                names.append(metric.name)
+        return names
+
+    def _known_variable_names(self) -> set[str]:
+        names = {m.name for m in STANDARD_METRICS}
+        names.update(m.name for m in self.custom_metrics)
+        if self._metrics is not None:
+            names.update(self._metrics)
+        return names
+
+    def _parse_log_variable(self, stem: str) -> str | None:
+        if not stem.startswith("log_"):
+            return None
+        remainder = stem[4:]
+        known = self._known_variable_names()
+        matches = [
+            name
+            for name in known
+            if remainder.startswith(f"{name}_") or remainder == name
+        ]
+        if not matches:
+            return None
+        return max(matches, key=len)
+
+    def _active_metric_enums(self) -> list[Enum]:
+        lookup = {m.name: m for m in STANDARD_METRICS}
+        for metric in self.custom_metrics:
+            lookup[metric.name] = metric
+        return [lookup[name] for name in self._metric_names() if name in lookup]
+
+    def _read_log_files(self, variables: set[str] | None = None) -> pd.DataFrame:
+        file_list = [
+            path
+            for path in self.experiment_folder.rglob("**/*log_*.csv")
+            if path.is_file()
+        ]
+        if variables is not None:
+            file_list = [
+                path
+                for path in file_list
+                if self._parse_log_variable(path.stem) in variables
+            ]
+
         df_list = []
+        for file_path in file_list:
+            df_tmp = pd.read_csv(
+                file_path,
+                usecols=lambda c: c in _LOG_READ_COLS,
+                dtype=_LOG_READ_DTYPES,
+            )
+            if df_tmp.empty:
+                continue
+            run = int(file_path.parent.parent.stem.split("_")[-1])
+            df_tmp["run"] = run
+            df_list.append(df_tmp)
 
-        if len(file_list) > 0:
-            for file_path in file_list:
-                if file_path.is_file():
-                    df_tmp = pd.read_csv(file_path, low_memory=False)
-                    if not df_tmp.empty:
-                        run = int(file_path.parent.parent.stem.split("_")[-1])
-                        df_tmp["run"] = run
-                        df_list.append(df_tmp)
-
-        if len(df_list) > 0:
+        if df_list:
             return pd.concat(df_list, ignore_index=True)
         return pd.DataFrame()
 
@@ -184,16 +262,16 @@ class ExperimentMetrics:
         grid["value"] = self._missing_fill_value(metric)
         return grid[[*group_keys, "value"]]
 
-    def calculate_runs_stats(self, custom_metrics: Enum = None) -> pd.DataFrame:
-
-        df_list = [self._calculate_metric(metric) for metric in STANDARD_METRICS]
-
-        if custom_metrics:
-            for metric in custom_metrics:
-                df_list.append(self._calculate_metric(metric))
-
-        self.runs_metrics = pd.concat(df_list, ignore_index=True)
-
+    def calculate_runs_stats(self) -> pd.DataFrame:
+        df_list = [
+            self._calculate_metric(metric) for metric in self._active_metric_enums()
+        ]
+        if df_list:
+            self.runs_metrics = pd.concat(df_list, ignore_index=True)
+        else:
+            self.runs_metrics = pd.DataFrame(
+                columns=["experiment", "variable", "key", "run", "value"]
+            )
         return self.runs_metrics
 
     def _calculate_metric(self, metric: Enum) -> pd.DataFrame:
@@ -236,7 +314,7 @@ class ExperimentMetrics:
         if variables:
             metric_list = variables
         else:
-            metric_list = [m.name for m in STANDARD_METRICS]
+            metric_list = self._metric_names()
 
         for metric in metric_list:
             metric_df = self.runs_metrics.loc[self.runs_metrics["variable"] == metric]
