@@ -782,7 +782,7 @@ class FactorySimulation(ABC):
                 variable=metric.name, saved_logs=saved_logs
             )
 
-            if metric.name == "utilization":
+            if metric.name in ("utilization", "breakdown", "setup"):
                 metric_df = metric_df.pivot_table(
                     values="value", index="key", columns="variable", aggfunc="sum"
                 )
@@ -791,7 +791,6 @@ class FactorySimulation(ABC):
                 metric_df = metric_df.pivot_table(
                     values="value", index="key", columns="variable", aggfunc="mean"
                 )
-                metric_df = metric_df / (self.env.now - self.warmup)
 
             df_list.append(metric_df)
         return pd.concat(df_list, axis=1)

@@ -17,6 +17,12 @@ _LOG_READ_DTYPES = {
     "key": "string",
 }
 _METRICS_NOT_PASSED = object()
+_RUNS_METRICS_COLS = ["experiment", "variable", "key", "run", "value"]
+_STANDARD_RUN_METRICS_FILES = (
+    "metrics_products.csv",
+    "metrics_resources.csv",
+    "metrics_general.csv",
+)
 
 
 class AggMethod:
@@ -75,6 +81,7 @@ class ExperimentMetrics:
             self.experiment_folder = Path(self.experiment_folder).resolve()
         self.custom_metrics = custom_metrics or []
         self.logs = pd.DataFrame()
+        self.runs_metrics = pd.DataFrame(columns=_RUNS_METRICS_COLS)
         self._metrics: list[str] | None = None
 
         self.params = {}
@@ -262,6 +269,169 @@ class ExperimentMetrics:
         grid["value"] = self._missing_fill_value(metric)
         return grid[[*group_keys, "value"]]
 
+    def read_runs_metrics(
+        self,
+        *,
+        source: Literal["auto", "cache", "saved", "logs"] = "auto",
+        include_custom: bool = False,
+    ) -> pd.DataFrame:
+        if source == "auto":
+            cached = self._read_runs_metrics_cache()
+            if cached is not None:
+                self.runs_metrics = cached
+                return self.runs_metrics
+            saved = self._read_saved_runs_metrics(include_custom=include_custom)
+            if saved is not None:
+                self.runs_metrics = self._supplement_runs_metrics_from_logs(saved)
+                return self.runs_metrics
+            self.read_logs()
+            return self.calculate_runs_stats()
+
+        if source == "cache":
+            cached = self._read_runs_metrics_cache()
+            if cached is None:
+                raise FileNotFoundError(
+                    f"No runs_metrics.csv in {self.experiment_folder}"
+                )
+            self.runs_metrics = cached
+            return self.runs_metrics
+
+        if source == "saved":
+            saved = self._read_saved_runs_metrics(include_custom=include_custom)
+            if saved is None:
+                raise FileNotFoundError(
+                    f"No saved run metrics in {self.experiment_folder}"
+                )
+            self.runs_metrics = self._supplement_runs_metrics_from_logs(saved)
+            return self.runs_metrics
+
+        self.read_logs()
+        return self.calculate_runs_stats()
+
+    def _read_runs_metrics_cache(self) -> pd.DataFrame | None:
+        cache_path = self.experiment_folder / "runs_metrics.csv"
+        if not cache_path.is_file():
+            return None
+        df = pd.read_csv(cache_path)
+        return self._filter_runs_metrics(df)
+
+    def _read_saved_runs_metrics(self, include_custom: bool = False) -> pd.DataFrame | None:
+        run_folders = sorted(
+            path
+            for path in self.experiment_folder.iterdir()
+            if path.is_dir() and path.name.startswith("run_")
+        )
+        if not run_folders:
+            return None
+
+        df_list = []
+        for run_folder in run_folders:
+            run_metrics = self._read_saved_run_metrics(
+                run_folder, include_custom=include_custom
+            )
+            if not run_metrics.empty:
+                df_list.append(run_metrics)
+
+        if not df_list:
+            return None
+
+        return self._filter_runs_metrics(pd.concat(df_list, ignore_index=True))
+
+    def _read_saved_run_metrics(
+        self, run_folder: Path, include_custom: bool = False
+    ) -> pd.DataFrame:
+        run_id = self._parse_run_id(run_folder)
+        metric_files = list(_STANDARD_RUN_METRICS_FILES)
+
+        if include_custom:
+            standard = set(_STANDARD_RUN_METRICS_FILES)
+            metric_files.extend(
+                path.name
+                for path in run_folder.glob("metrics_*.csv")
+                if path.name not in standard
+            )
+
+        df_list = []
+        for file_name in metric_files:
+            file_path = run_folder / file_name
+            if not file_path.is_file():
+                continue
+            df_wide = pd.read_csv(file_path)
+            df_long = self._wide_metrics_csv_to_long(df_wide, run_id)
+            if not df_long.empty:
+                df_list.append(df_long)
+
+        if not df_list:
+            return pd.DataFrame(columns=_RUNS_METRICS_COLS)
+
+        return pd.concat(df_list, ignore_index=True)
+
+    @staticmethod
+    def _parse_run_id(run_folder: Path) -> int:
+        return int(run_folder.name.split("_")[-1])
+
+    def _wide_metrics_csv_to_long(
+        self, df_wide: pd.DataFrame, run_id: int
+    ) -> pd.DataFrame:
+        if df_wide.empty:
+            return pd.DataFrame(columns=_RUNS_METRICS_COLS)
+
+        df = df_wide.copy()
+        key_col = "key" if "key" in df.columns else df.columns[0]
+        if key_col != "key":
+            df = df.rename(columns={key_col: "key"})
+        id_vars = ["key"]
+        value_vars = [col for col in df.columns if col != "key"]
+        if not value_vars:
+            return pd.DataFrame(columns=_RUNS_METRICS_COLS)
+
+        df_long = df.melt(
+            id_vars=id_vars,
+            value_vars=value_vars,
+            var_name="variable",
+            value_name="value",
+        )
+        df_long["experiment"] = self.experiment_folder.name
+        df_long["run"] = run_id
+        return df_long[_RUNS_METRICS_COLS]
+
+    def _filter_runs_metrics(self, df: pd.DataFrame) -> pd.DataFrame:
+        if df.empty:
+            return pd.DataFrame(columns=_RUNS_METRICS_COLS)
+
+        allowed = set(self._metric_names())
+        filtered = df.loc[df["variable"].isin(allowed), _RUNS_METRICS_COLS]
+        return filtered.reset_index(drop=True)
+
+    def _supplement_runs_metrics_from_logs(
+        self, runs_metrics: pd.DataFrame
+    ) -> pd.DataFrame:
+        loaded_vars = set(runs_metrics["variable"].unique())
+        missing_enums = [
+            metric
+            for metric in self._active_metric_enums()
+            if metric.name not in loaded_vars
+        ]
+        if not missing_enums:
+            return runs_metrics
+
+        self.read_logs(metrics=[metric.name for metric in missing_enums])
+        supplements = []
+        for metric in missing_enums:
+            if (
+                self.logs.empty
+                or "variable" not in self.logs.columns
+                or self.logs.loc[self.logs["variable"] == metric.name].empty
+            ):
+                supplements.append(self._synthetic_metric_frame(metric))
+            else:
+                supplements.append(self._calculate_metric(metric))
+
+        if not supplements:
+            return runs_metrics
+
+        return pd.concat([runs_metrics, *supplements], ignore_index=True)
+
     def calculate_runs_stats(self) -> pd.DataFrame:
         df_list = [
             self._calculate_metric(metric) for metric in self._active_metric_enums()
@@ -277,6 +447,9 @@ class ExperimentMetrics:
     def _calculate_metric(self, metric: Enum) -> pd.DataFrame:
 
         group_keys = ["experiment", "variable", "key", "run"]
+        if self.logs.empty or "variable" not in self.logs.columns:
+            return self._synthetic_metric_frame(metric)
+
         df_metric = self.logs.loc[self.logs["variable"] == metric.name]
 
         if df_metric.empty:
@@ -428,9 +601,13 @@ class ExperimentMetrics:
         }
 
     def save_stats(self, confidence, precision):
+        if self.runs_metrics.empty:
+            self.runs_metrics = self.calculate_runs_stats()
 
-        self.runs_metrics = self.calculate_runs_stats()
         stats_df = self.calculate_experiment_stats(confidence, precision)
+        self.runs_metrics.to_csv(
+            self.experiment_folder / "runs_metrics.csv", index=False
+        )
         save_path = self.experiment_folder / "experiment_stats.csv"
         stats_df.to_csv(save_path, index=False)
 

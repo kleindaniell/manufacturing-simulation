@@ -71,7 +71,7 @@ class Logger:
             return np.empty((0, 2), dtype=np.float32)
         return var_dict.get(key, np.empty((0, 2), dtype=np.float32))
 
-    def get_last_log_value(self, variable: str, key: str):
+    def get_last_log_value(self, variable: str, key: str)->tuple[np.float64, np.float64]:
 
         index=self.log_index.get(variable, {}).get(key, 0)
         if index ==0:

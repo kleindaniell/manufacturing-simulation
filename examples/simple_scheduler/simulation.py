@@ -69,7 +69,7 @@ def main(cfg: DictConfig):
 
     metrics = ExperimentMetrics(experiment.save_folder_path)
 
-    metrics.read_logs()
+    metrics.read_runs_metrics()
     stats_df = metrics.save_stats(0.95, 0.05)
     print("=" *50)
     print("Experiment Stats")
