@@ -10,7 +10,13 @@ from manusim.engine.logs import Logger
 from manusim.engine.orders import DemandOrder, ProductionOrder
 from manusim.engine.stores import SimulationStores
 from manusim.engine.utils import DistributionGenerator
-from manusim.metrics import MetricGeneral, MetricProducts, MetricResources
+from manusim.metrics import (
+    MetricGeneral,
+    MetricProducts,
+    MetricResources,
+    complete_wide_metrics_df,
+    pivot_aggfunc_for_metric,
+)
 
 
 class FactorySimulation(ABC):
@@ -103,7 +109,7 @@ class FactorySimulation(ABC):
     def _init_loggint(self) -> None:
         """Initialize logging components"""
 
-        self.logs = Logger(
+        self.logs: Logger = Logger(
             logs_save_path=self.log_save_path,
             mem_size=self.memory_size,
             enabled=self.enable_event_logging,
@@ -216,19 +222,7 @@ class FactorySimulation(ABC):
                 key=product,
                 value=(self.env.now, productionOrder.quantity),
             )
-            # Log Wip
-            wip = self.stores.wip[product].level
-            self.logs.log(
-                variable=MetricProducts.wip.name,
-                key=product,
-                value=(self.env.now, wip),
-            )
-            
-            self.logs.log(
-                variable=MetricGeneral.wip_general.name,
-                key="general",
-                value=(self.env.now, self._cached_total_wip),
-            )
+            self._log_inventory_metrics(product, log_wip=True, log_fg=False)
             # Log resource queue
             if self.log_queues:
                 last_queue = self.logs.get_last_log_value(
@@ -319,8 +313,7 @@ class FactorySimulation(ABC):
 
                 # Update performance caches
                 self._cached_total_wip -= productionOrder.quantity
-                fg_level = self.stores.finished_goods[product].level
-                self._cached_total_fg[product] = fg_level
+                self._cached_total_fg[product] = self.stores.finished_goods[product].level
 
                 if self.warmup_finished:
                     # Log flow time
@@ -329,34 +322,8 @@ class FactorySimulation(ABC):
                         key=product,
                         value=(self.env.now, self.env.now - productionOrder.released),
                     )
-                    
-                    # Log Wip
-                    wip = self.stores.wip[product].level
-                    self.logs.log(
-                        variable=MetricProducts.wip.name,
-                        key=product,
-                        value=(self.env.now, wip),
-                    )
 
-                    self.logs.log(
-                        variable=MetricGeneral.wip_general.name,
-                        key="general",
-                        value=(self.env.now, self._cached_total_wip),
-                    )
-
-                    # Log FG
-                    self.logs.log(
-                        variable=MetricProducts.finishedGoods.name,
-                        key=product,
-                        value=(self.env.now, fg_level),
-                    )
-                    
-                    total_fg = sum(self._cached_total_fg.values())
-                    self.logs.log(
-                        variable=MetricGeneral.finishedGoods_general.name,
-                        key="general",
-                        value=(self.env.now, total_fg),
-                    )
+                    self._log_inventory_metrics(product, log_wip=True, log_fg=True)
 
             # Order to next resource
             else:
@@ -526,20 +493,7 @@ class FactorySimulation(ABC):
 
         # Log orders
         if self.warmup_finished:
-            fg_level = self.stores.finished_goods[product].level
-            self._cached_total_fg[product] = fg_level
-            self.logs.log(
-                variable=MetricProducts.finishedGoods.name,
-                key=product,
-                value=(self.env.now, fg_level),
-            )
-            total_fg = sum(self._cached_total_fg.values())
-
-            self.logs.log(
-                variable=MetricGeneral.finishedGoods_general.name,
-                key="general",
-                value=(self.env.now, total_fg),
-            )
+            self._log_inventory_metrics(product, log_wip=False, log_fg=True)
 
             self._log_delivery_performance(demand_order)
             self._log_lead_time(demand_order)
@@ -559,19 +513,7 @@ class FactorySimulation(ABC):
         demand_order.delivered = self.env.now
 
         if self.warmup_finished:
-            fg_level = self.stores.finished_goods[product].level
-            self._cached_total_fg[product] = fg_level
-            self.logs.log(
-                variable=MetricProducts.finishedGoods.name,
-                key=product,
-                value=(self.env.now, fg_level),
-            )
-            total_fg = sum(self._cached_total_fg.values())
-            self.logs.log(
-                variable=MetricGeneral.finishedGoods_general.name,
-                key="general",
-                value=(self.env.now, total_fg),
-            )
+            self._log_inventory_metrics(product, log_wip=False, log_fg=True)
 
             self._log_delivery_performance(demand_order)
             self._log_lead_time(demand_order)
@@ -599,24 +541,64 @@ class FactorySimulation(ABC):
             demand_order.delivered = self.env.now
 
             if self.warmup_finished:
-                fg_level = self.stores.finished_goods[product].level
-                self._cached_total_fg[product] = fg_level
-                self.logs.log(
-                    variable=MetricProducts.finishedGoods.name,
-                    key=product,
-                    value=(self.env.now, fg_level),
-                )
-                total_fg = sum(self._cached_total_fg.values())
-                self.logs.log(
-                    variable=MetricGeneral.finishedGoods_general.name,
-                    key="general",
-                    value=(self.env.now, total_fg),
-                )
+                self._log_inventory_metrics(product, log_wip=False, log_fg=True)
 
                 self._log_delivery_performance(demand_order)
                 self._log_lead_time(demand_order)
 
         self.env.process(_delivery_order(demand_order))
+
+    def _log_inventory_metrics(
+        self, product: str, *, log_wip: bool = True, log_fg: bool = True
+    ) -> None:
+        if not self.warmup_finished:
+            return
+
+        if log_wip:
+            wip = self.stores.wip[product].level
+            self.logs.log(
+                variable=MetricProducts.wip.name,
+                key=product,
+                value=(self.env.now, wip),
+            )
+            self.logs.log(
+                variable=MetricGeneral.wip_general.name,
+                key="general",
+                value=(self.env.now, self._cached_total_wip),
+            )
+
+        if log_fg:
+            fg_level = self.stores.finished_goods[product].level
+            self._cached_total_fg[product] = fg_level
+            self.logs.log(
+                variable=MetricProducts.finishedGoods.name,
+                key=product,
+                value=(self.env.now, fg_level),
+            )
+            total_fg = sum(self._cached_total_fg.values())
+            self.logs.log(
+                variable=MetricGeneral.finishedGoods_general.name,
+                key="general",
+                value=(self.env.now, total_fg),
+            )
+
+        total_inventory = (
+            self.stores.wip[product].level
+            + self.stores.finished_goods[product].level
+        )
+        total_inventory_general = self._cached_total_wip + sum(
+            self._cached_total_fg.values()
+        )
+        self.logs.log(
+            variable=MetricProducts.totalInventory.name,
+            key=product,
+            value=(self.env.now, total_inventory),
+        )
+        self.logs.log(
+            variable=MetricGeneral.totalInventory_general.name,
+            key="general",
+            value=(self.env.now, total_inventory_general),
+        )
 
     def _custom_fg_reduced(self, product):
         pass
@@ -749,65 +731,62 @@ class FactorySimulation(ABC):
     def print_custom_metrics(self):
         pass
 
-    def products_metrics(self, saved_logs=False) -> pd.DataFrame:
+    def _pivot_metric_logs(self, metric, saved_logs: bool = False) -> pd.DataFrame:
+        metric_df = self.logs.get_variable_logs(
+            variable=metric.name, saved_logs=saved_logs
+        )
+        if metric_df.empty:
+            return pd.DataFrame()
+
+        return metric_df.pivot_table(
+            values="value",
+            index="key",
+            columns="variable",
+            aggfunc=pivot_aggfunc_for_metric(metric),
+        )
+
+    def _build_family_metrics(
+        self,
+        metrics,
+        keys,
+        saved_logs: bool = False,
+        time_normalize: set[str] | None = None,
+    ) -> pd.DataFrame:
         df_list = []
-        sum_metrics = [
-            MetricProducts.deliveredOntime.name,
-            MetricProducts.deliveredLate.name,
-            MetricProducts.lostSales.name,
-        ]
-
-        for metric in MetricProducts:
-
-            metric_df = self.logs.get_variable_logs(
-                variable=metric.name, saved_logs=saved_logs
-            )
-
-            if metric.name in sum_metrics:
-                metric_df = metric_df.pivot_table(
-                    values="value", index="key", columns="variable", aggfunc="sum"
-                )
-            else:
-                metric_df = metric_df.pivot_table(
-                    values="value", index="key", columns="variable", aggfunc="mean"
-                )
-
+        for metric in metrics:
+            metric_df = self._pivot_metric_logs(metric, saved_logs=saved_logs)
+            if (
+                time_normalize
+                and metric.name in time_normalize
+                and not metric_df.empty
+            ):
+                metric_df = metric_df / (self.env.now - self.warmup)
             df_list.append(metric_df)
-        return pd.concat(df_list, axis=1)
+
+        partial = pd.concat(df_list, axis=1) if df_list else pd.DataFrame()
+        return complete_wide_metrics_df(partial, list(metrics), list(keys))
+
+    def products_metrics(self, saved_logs=False) -> pd.DataFrame:
+        return self._build_family_metrics(
+            MetricProducts,
+            self.products_config.keys(),
+            saved_logs=saved_logs,
+        )
 
     def resources_metrics(self, saved_logs=False) -> pd.DataFrame:
-        df_list = []
-        for metric in MetricResources:
-            metric_df = self.logs.get_variable_logs(
-                variable=metric.name, saved_logs=saved_logs
-            )
-
-            if metric.name in ("utilization", "breakdown", "setup"):
-                metric_df = metric_df.pivot_table(
-                    values="value", index="key", columns="variable", aggfunc="sum"
-                )
-                metric_df = metric_df / (self.env.now - self.warmup)
-            else:
-                metric_df = metric_df.pivot_table(
-                    values="value", index="key", columns="variable", aggfunc="mean"
-                )
-
-            df_list.append(metric_df)
-        return pd.concat(df_list, axis=1)
+        return self._build_family_metrics(
+            MetricResources,
+            self.resources_config.keys(),
+            saved_logs=saved_logs,
+            time_normalize={"utilization", "breakdown", "setup"},
+        )
 
     def general_metrics(self, saved_logs=False) -> pd.DataFrame:
-        df_list = []
-        for metric in MetricGeneral:
-            metric_df = self.logs.get_variable_logs(
-                variable=metric.name, saved_logs=saved_logs
-            )
-
-            metric_df = metric_df.pivot_table(
-                values="value", index="key", columns="variable", aggfunc="mean"
-            )
-
-            df_list.append(metric_df)
-        return pd.concat(df_list, axis=1)
+        return self._build_family_metrics(
+            MetricGeneral,
+            ["general"],
+            saved_logs=saved_logs,
+        )
 
     def save_metrics(self, save_path: Path, saved_logs=False) -> None:
         products_df = self.products_metrics(saved_logs=saved_logs)
